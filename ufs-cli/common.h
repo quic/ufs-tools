@@ -34,6 +34,7 @@ struct ufs_characteristics {
 	const char *name;
 };
 
+int get_ull_from_cli(unsigned long long *val);
 int get_value_from_cli(int *val);
 int init_device_path(char *path);
 int characteristics_look_up(struct ufs_characteristics *c, __u32 id);

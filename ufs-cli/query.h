@@ -47,7 +47,7 @@ struct query_operation {
 	int idn;
 	int index;
 	int selector;
-	__u32 attr_value;
+	__u64 attr_value;
 };
 
 static struct ufs_characteristics ufs_descriptors[] = {

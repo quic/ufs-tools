@@ -82,9 +82,10 @@ static int init_selector(struct lsufs_operation *lsufs_op)
 
 static int init_attr_value(struct lsufs_operation *lsufs_op)
 {
-	int value, ret;
+	unsigned long long value;
+	int ret;
 
-	ret = get_value_from_cli(&value);
+	ret = get_ull_from_cli(&value);
 	if (ret) {
 		pr_err("Invalid Attribute Value.\n");
 		return ERROR;
@@ -190,6 +191,7 @@ static void compose_ufs_bsg_req(struct lsufs_operation *lsufs_op, struct ufs_bsg
 {
 	struct utp_upiu_header *hdr = &req->upiu_req.header;
 	struct utp_upiu_query *qr = &req->upiu_req.qr;
+	struct utp_upiu_query_attr *qr_attr;
 	struct query_operation *qop = &lsufs_op->query_op;
 
         req->msgcode = UTP_UPIU_QUERY_REQ;
@@ -200,9 +202,13 @@ static void compose_ufs_bsg_req(struct lsufs_operation *lsufs_op, struct ufs_bsg
         qr->idn = qop->idn;
         qr->index = qop->index;
         qr->selector = qop->selector;
-        qr->length = htobe16(length);
-	if (qop->opcode == QUERY_REQ_OP_WRITE_ATTR)
-		qr->value = htobe32(qop->attr_value);
+
+	if (qop->opcode == QUERY_REQ_OP_READ_DESC) {
+		qr->length = htobe16(length);
+	} else if (qop->opcode == QUERY_REQ_OP_WRITE_ATTR) {
+		qr_attr = (struct utp_upiu_query_attr *)&req->upiu_req.qr;
+		qr_attr->value = htobe64(qop->attr_value);
+	}
 }
 
 static int send_query_command(struct lsufs_operation *lsufs_op, __u8 *buf, __u16 *buf_len,
@@ -303,6 +309,7 @@ static int do_query_read_attribute(struct lsufs_operation *lsufs_op)
 {
 	struct query_operation *qop = &lsufs_op->query_op;
 	struct ufs_bsg_reply bsg_reply = {0};
+	struct utp_upiu_query_attr *qr_attr;
 	__u16 buf_len = 0;
 	int id, ret;
 
@@ -315,10 +322,12 @@ static int do_query_read_attribute(struct lsufs_operation *lsufs_op)
 		return ret;
 	}
 
-	printf("Attribute IDN 0x%x - %s, Index 0x%x : 0x%x\n", qop->idn,
+	qr_attr = (struct utp_upiu_query_attr *)&bsg_reply.upiu_rsp.qr;
+
+	printf("Attribute IDN 0x%x - %s, Index 0x%x : 0x%lx\n", qop->idn,
 			id < 0 ? "???" : ufs_attributes[id].name,
 			qop->index,
-			be32toh(bsg_reply.upiu_rsp.qr.value));
+			be64toh(qr_attr->value));
 
 	return ret;
 }

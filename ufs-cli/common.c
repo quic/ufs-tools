@@ -23,6 +23,24 @@ int get_value_from_cli(int *val)
 	return SUCCESS;
 }
 
+int get_ull_from_cli(unsigned long long *val)
+{
+	char *end;
+
+	if (strstr(optarg, "0x") || strstr(optarg, "0X")) {
+		*val = strtoull(optarg, &end, 0);
+		if (*end != '\0')
+			return ERROR;
+	} else {
+		*val = (unsigned long long)atoll(optarg);
+	}
+
+	if ((*val == 0 && strncmp(optarg, "0", 1)) || *val < 0)
+		return ERROR;
+
+	return SUCCESS;
+}
+
 int init_device_path(char *path)
 {
         if (optarg[0] == 0) {
