@@ -621,7 +621,7 @@ int main(int argc, char *argv[])
 	bsg_fd = open(device_path, O_RDWR);
 	if (bsg_fd < 0) {
 		pr_err("Filed to open file %s (%d).\n", device_path, bsg_fd);
-		goto free_eom_result;
+		return ERROR;
 	}
 
 	/* Get RX_EYEMON_Capability */
@@ -714,15 +714,6 @@ skip_io_prepare:
 		goto out;
 	}
 
-	eom_result_count = (data->timing_max_steps * 2 + 1) * (data->voltage_max_steps * 2 + 1) * data->num_lanes;
-	eom_result_size = eom_result_count * sizeof(struct eom_result);
-	data->er = malloc(eom_result_size);
-	if (!data->er) {
-		pr_err("Failed to allocate memory for eom_result\n");
-		return ERROR;
-	}
-	memset(data->er, 0, eom_result_size);
-
 	if (verbose) {
 		printf("EOM Capabilities:\n");
 		printf("TimingMaxSteps %d TimingMaxOffset %d\n", data->timing_max_steps, data->timing_max_offset);
@@ -732,8 +723,19 @@ skip_io_prepare:
 	/* Sanity check for single voltage */
 	if (single_voltage && (voltage > data->voltage_max_steps || voltage < -data->voltage_max_steps)) {
 		pr_err("Invalid voltage\n");
+		ret = ERROR;
 		goto out;
 	}
+
+	eom_result_count = (data->timing_max_steps * 2 + 1) * (data->voltage_max_steps * 2 + 1) * data->num_lanes;
+	eom_result_size = eom_result_count * sizeof(struct eom_result);
+	data->er = malloc(eom_result_size);
+	if (!data->er) {
+		pr_err("Failed to allocate memory for eom_result\n");
+		ret = ERROR;
+		goto out;
+	}
+	memset(data->er, 0, eom_result_size);
 
 	printf("Start EOM Scan...\n");
 	clock_gettime(CLOCK_MONOTONIC, &ts_start);
@@ -776,15 +778,12 @@ skip_io_prepare:
 		pr_err("Filed to generate EOM report\n");
 
 out:
-	if (!tmp_buf)
-		free(tmp_buf);
+	free(data->er);
+	free(tmp_buf);
 close_tmp:
-	if (tmp_fd >= 0)
-		close(tmp_fd);
+	close(tmp_fd);
 close_bsg:
 	close(bsg_fd);
-free_eom_result:
-	free(data->er);
 
 	return ret;
 }
