@@ -105,10 +105,10 @@ static char *ufseom_short_options = "plDL:v:t:o:d:V";
 static struct option ufseom_long_options[] = {
 	{"peer", no_argument, NULL, 'p'}, /* UFS device */
 	{"local", no_argument, NULL, 'l'}, /* UFS host*/
-	{"data", no_argument, NULL, 'D'}, /* UFS host*/
+	{"data", no_argument, NULL, 'D'}, /* Do I/Os */
 	{"lane", required_argument, NULL, 'L'}, /* Lane */
 	{"voltage", required_argument, NULL, 'v'}, /* Voltage */
-	{"target", required_argument, NULL, 't'}, /* Voltage */
+	{"target", required_argument, NULL, 't'}, /* Target test count */
 	{"output", required_argument, NULL, 'o'}, /* EOM result output path */
 	{"device", required_argument, NULL, 'd'}, /* UFS BSG device path. For example: /dev/ufs-bsg0 */
 	{"verbose", no_argument, NULL, 'V'}, /* Enable detailed EOM information and logs */
