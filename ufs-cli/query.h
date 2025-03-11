@@ -99,6 +99,23 @@ static struct ufs_characteristics ufs_attributes[] = {
 	{0x2e, "bRefreshUnit"},
 	{0x2f, "bRefreshMethod"},
 	{0x30, "qTimestamp"},
+	{0x34, "qDeviceLevelExceptionID"},
+	{0x35, "bDefragOperation"},
+	{0x36, "dHIDAvaliableSize"},
+	{0x37, "dHIDSize"},
+	{0x38, "bHIDProgressRatio"},
+	{0x39, "bHIDState"},
+	{0x3c, "bWriteBoosterBufferResizeHint"},
+	{0x3d, "bWriteBoosterBufferResizeEn"},
+	{0x3e, "bWriteBoosterBufferResizeStatus"},
+	{0x3f, "bWriteBoosterBufferPartialFlushMode"},
+	{0x40, "dMaxFIFOSizeForWriteBoosterPartialFlushMode"},
+	{0x41, "dCurrentFIFOSizeForWriteBoosterPartialFlushMode"},
+	{0x42, "dPinnedWriteBoosterBufferCurrentAllocUnits"},
+	{0x43, "bPinnedWriteBoosterBufferAvailablePercentage"},
+	{0x44, "dPinnedWriteBoosterCummulativeWrittenSize"},
+	{0x45, "dPinnedWriteBoosterBufferNumAllocUnits"},
+	{0x46, "dNonPinnedWriteBoosterBufferMinNumAllocUnits"},
 	{INIT, NULL},
 };
 
@@ -118,6 +135,7 @@ static struct ufs_characteristics ufs_flags[] = {
 	{0x10, "fWriteBoosterBufferFlushDuringHibernate"},
 	{0x11, "fHPBReset"},
 	{0x12, "fHPBEnable"},
+	{0x13, "fUnpinEn"},
 	{INIT, NULL},
 };
 
