@@ -1,0 +1,8 @@
+*.o
+*.o.*
+*.a
+*.s
+*.ko
+*.so
+lsufs
+ufseom
