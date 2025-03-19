@@ -173,6 +173,11 @@ int main(int argc, char *argv[])
 	char **orig_argv = malloc(sizeof(char *) * argc);
 	int ret;
 
+	if (!orig_argv) {
+		pr_err("Failed to allocate memory for lsufs command arguments\n");
+		return ERROR;
+	}
+
 	shell_init("rshell");
 	memcpy(orig_argv, argv, sizeof(char *) * argc);
 
