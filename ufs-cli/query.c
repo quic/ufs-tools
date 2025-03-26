@@ -3,6 +3,7 @@
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <endian.h>
 #include "lsufs.h"
 #include "ufs_bsg.h"
 #include "upiu.h"
@@ -263,6 +264,81 @@ static void dump_descriptor(__u8 *desc_buf, __u16 len)
 		printf("Offset 0x%x : 0x%x\n", i, *desc_buf);
 }
 
+/**
+ * dump_hex - Hexadecimal dump of data
+ * @buf: Descriptor data buffer
+ * @len: Length of buffer
+ */
+static void dump_hex(__u8 *buf, __u16 len)
+{
+	__u32 offset;
+	__u32 end_offset = len;
+
+	printf("\nHex Dump Raw Data:\n");
+
+	for (offset = 0; offset < end_offset; offset++) {
+	if (offset % 16 == 0)
+		printf("%s0x%02x:%s ", (offset < 64) ? "\033[1;32m" : "\033[1;34m", offset, "\033[0m");
+
+	printf("%02x ", buf[offset]);
+
+	if (offset % 16 == 15)
+		printf("\n");
+	}
+
+	if (offset % 16 != 0)
+		printf("\n");
+}
+
+
+/**
+ * ufs_dev_desc_interpretation - Structured interpretation of UFS device descriptor
+ * @desc_buf: Descriptor data buffer
+ * @len: Length of buffer
+ */
+static void ufs_dev_desc_interpretation(__u8 *desc_buf, __u16 len)
+{
+	__u64 val;
+
+	printf("UFS Device Descriptor:\n");
+	printf("===========================================\n");
+
+	for (int i = 0; ufs_dev_desc[i].name != NULL; i++) {
+
+		if (strncmp(ufs_dev_desc[i].name, "Reserved", 8) == 0)
+			/* Skip reserved fields */
+			continue;
+
+		if (ufs_dev_desc[i].id >= len) {
+			printf("0x%02X: %-35s = [Possible Buffer Overflows: Buffer size %d]\n",
+				ufs_dev_desc[i].id, ufs_dev_desc[i].name, len);
+			break;
+		}
+
+		printf("0x%02X: %-35s = ", ufs_dev_desc[i].id, ufs_dev_desc[i].name);
+
+		/* Value printing based on size */
+		switch(ufs_dev_desc[i].name[0]) {
+			case 'b':
+			case 'i':
+				printf("0x%02X", desc_buf[ufs_dev_desc[i].id]);
+				break;
+			case 'w':
+				val = be16toh(*(__be16*)(desc_buf + ufs_dev_desc[i].id));
+				printf("0x%04llX", val);
+				break;
+			case 'd':
+				val = be32toh(*(__be64*)(desc_buf + ufs_dev_desc[i].id));
+				printf("0x%08llX", val);
+				break;
+			default:
+				printf("[Unknown Prefix]");
+				break;
+		}
+		printf("\n");
+	}
+}
+
 static int do_query_read_descriptor(struct lsufs_operation *lsufs_op)
 {
 	struct query_operation *qop = &lsufs_op->query_op;
@@ -279,8 +355,13 @@ static int do_query_read_descriptor(struct lsufs_operation *lsufs_op)
 		return ret;
 	}
 
-	printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
-	dump_descriptor(buf, buf_len);
+	if (id == 0) {
+		ufs_dev_desc_interpretation(buf, buf_len);
+		dump_hex(buf, buf_len);
+	} else {
+		printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
+		dump_descriptor(buf, buf_len);
+	}
 
 	return ret;
 }

@@ -139,6 +139,55 @@ static struct ufs_characteristics ufs_flags[] = {
 	{INIT, NULL},
 };
 
+static const struct ufs_characteristics ufs_dev_desc[] = {
+	{0x00, "bLength"},
+	{0x01, "bDescriptorIDN"},
+	{0x02, "bDevice"},
+	{0x03, "bDeviceClass"},
+	{0x04, "bDeviceSubClass"},
+	{0x05, "bProtocol"},
+	{0x06, "bNumberLU"},
+	{0x07, "bNumberWLU"},
+	{0x08, "bBootEnable"},
+	{0x09, "bDescrAccessEn"},
+	{0x0A, "bInitPowerMode"},
+	{0x0B, "bHighPriorityLUN"},
+	{0x0C, "bSecureRemovalType"},
+	{0x0D, "bSecurityLU"},
+	{0x0E, "bBackgroundOpsTermLat"},
+	{0x0F, "bInitActiveICCLevel"},
+	{0x10, "wSpecVersion"},
+	{0x12, "wManufactureDate"},
+	{0x14, "iManufacturerName"},
+	{0x15, "iProductName"},
+	{0x16, "iSerialNumber"},
+	{0x17, "iOemID"},
+	{0x18, "wManufacturerID"},
+	{0x1A, "bUD0BaseOffset"},
+	{0x1B, "bUDConfigPLength"},
+	{0x1C, "bDeviceRTTCap"},
+	{0x1D, "wPeriodicRTCUpdate"},
+	{0x1F, "bUFSFeaturesSupport"},
+	{0x20, "bFFUTimeout"},
+	{0x21, "bQueueDepth"},
+	{0x22, "wDeviceVersion"},
+	{0x24, "bNumSecureWPArea"},
+	{0x25, "dPSAMaxDataSize"},
+	{0x29, "bPSAStateTimeout"},
+	{0x2A, "iProductRevisionLevel"},
+	{0x2B, "Reserved[5]"},       // JESD220G Page 433
+	{0x30, "Reserved[16]"},      // Reserved for UME
+	{0x40, "Reserved[3]"},       // Reserved for HPB
+	{0x43, "Reserved[10]"},      // JESD220G Page 433
+	{0x4D, "wExtendedWriteBoosterSupport"},
+	{0x4F, "dExtendedUFSFeaturesSupport"},
+	{0x53, "bWriteBoosterBufferPreserveUserSpaceEn"},
+	{0x54, "bWriteBoosterBufferType"},
+	{0x55, "dNumSharedWriteBoosterBufferAllocUnits"},
+	/* Terminator */
+	{INIT, NULL}
+};
+
 int init_query_operation(int argc, char *argv[], void *op_data);
 int query_read_descriptor(int fd, int idn, int index, int sel, __u8 *buf, __u16 buf_len);
 int do_query_operation(void *op_data);
