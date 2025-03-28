@@ -33,6 +33,7 @@
 #define EOM_STEP_MASK			0x3F
 #define EOM_TEMP_DATA_SIZE		4 * 1024 * 1024	//4MB file
 #define EOM_TEMP_DATA_MEM_ALIGN_SIZE	4096
+#define EOM_SUPPORTED_MIN_GEAR		5
 
 #define STRING_BUFFER_SIZE		0x24
 
@@ -610,7 +611,7 @@ int main(int argc, char *argv[])
 	struct timespec ts_start, ts_end;
 	char tmp_file[1024], output_file[1024], eom_file_name[256], lane_str[8];
 	size_t eom_result_size;
-	int t, v, l, n, eom_cap, ret;
+	int t, v, l, n, eom_cap, cur_gear, ret;
 
 	init_eom_operation();
 
@@ -632,6 +633,22 @@ int main(int argc, char *argv[])
 		goto close_bsg;
 	} else if (!(eom_cap & 0x1)) {
 		pr_err("EOM is not supported\n");
+		ret = ERROR;
+		goto close_bsg;
+	}
+
+	/* Get PA_RxGear */
+	cur_gear = uic_get(bsg_fd, UIC_ARG_MIB_SEL(PA_RXGEAR, SELECT_RX(0)), 0);
+	if (cur_gear < 0) {
+		pr_err("Failed to get current gear from PA_RXGEAR\n");
+		ret = ERROR;
+		goto close_bsg;
+	} else if (verbose) {
+		printf("PA_RxGear: %d\n", cur_gear);
+	}
+
+	if (cur_gear < EOM_SUPPORTED_MIN_GEAR) {
+		pr_err("EOM is not supported at current gear %d\n", cur_gear);
 		ret = ERROR;
 		goto close_bsg;
 	}
@@ -667,10 +684,10 @@ int main(int argc, char *argv[])
 skip_io_prepare:
 	/* EOM result file naming rule: local/peer_lane_0/_1_targetestcount.eom */
 	snprintf(lane_str, sizeof(lane_str), "%d", lane);
-	snprintf(eom_file_name, sizeof(eom_file_name), "%s_lane_%s_ttc_%d.eom",
+	snprintf(eom_file_name, sizeof(eom_file_name), "%s_lane_%s_gear_%d_ttc_%d.eom",
 						      data->local_peer ? "peer" : "local",
 						      (data->num_lanes == 2) ? "0_1" : lane_str,
-						      target_test_count);
+						      cur_gear, target_test_count);
 	strcpy(output_file, output_path);
 	strcat(output_file, eom_file_name);
 

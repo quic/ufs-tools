@@ -41,7 +41,8 @@
 #define RX_EYEMON_START				0x00FC
 
 #define PA_PWRMODE				0x1571
-#define PA_TXHSADAPTTYPE		0x15D4
+#define PA_TXHSADAPTTYPE			0x15D4
+#define PA_RXGEAR				0x1583
 
 #define RX_EYEMON_START_MASK			0x1
 
