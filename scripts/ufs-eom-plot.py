@@ -111,7 +111,6 @@ class ufs_eye_monitor_plot(object):
             for item in self.match_line_list:
                 if item not in line:
                     continue
-            #print(line)
             if len(line_list) <= 7:
                 continue
             if line_list[0] != 'lane' and line_list[2] != 'timing' and line_list[4] != 'voltage' and line_list[6] != 'error' and line_list[7] != 'count':
@@ -141,7 +140,6 @@ class ufs_eye_monitor_plot(object):
                 key = 't#{:d}#v#{:d}'.format(timing, voltage)
                 self.lane1_data[key] = error_count
             else:
-                #pdb.set_trace()
                 self.quit_with_err_msg('wrong lane number on line {:d}'.format(self.line_no))
 
         if self.bad_data_count != 0:
@@ -199,7 +197,6 @@ class ufs_eye_monitor_plot(object):
         self.plot_eye(1)
 
         return
-
 
     def validate_data(self, lane_no):
         missing_data_count = 0
@@ -288,8 +285,11 @@ class ufs_eye_monitor_plot(object):
 
         df0 = pd.DataFrame(list(zip(lane_timing_list_adj, lane_voltage_list_adj, lane_error_count_list)), columns=['UI', 'mV', 'count'])
         df1 = df0.pivot(index='mV', columns='UI', values='count')
-
-        ax2 = sns.heatmap(df1, annot=False, ax=ax1)
+        colors = ['#008000', '#FF0000', '#EE4040', '#DD2C2C', '#CD2626', '#8B3A3A', '#600000', '#000000']
+        boundaries = [0, 1, 10, 20, 30, 40, 50, 60, 63]
+        cmap = mcolors.LinearSegmentedColormap.from_list('custom_cmap', colors, N=256)
+        norm = mcolors.BoundaryNorm(boundaries=boundaries, ncolors=256)
+        ax2 = sns.heatmap(df1, annot=False, cmap=cmap, ax=ax1, norm=norm)
 
         if self.ufs_device_mfr_name != '':
             title_1 = self.side + ' ' + lane_title + ' : ' + self.ufs_device_mfr_name + ', ' + self.ufs_device_mfr_id + ' ' + self.ufs_device_size + ' ' + self.ufs_version_no + ' '  + self.ufs_gear
