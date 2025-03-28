@@ -7,6 +7,7 @@ import re
 import subprocess
 import datetime
 
+EomVersion = 1.0
 Reporter = None
 TimingMaxSteps = 0
 VoltageMaxSteps = 0
@@ -281,6 +282,8 @@ def print_usage():
     print()
     print('{:s} --side=local/peer [--lane=0/1] [--voltage=<voltage value>] [--target=<target test count>] --lsufs_path=<path to lsufs> --device_path=<path to the UFS BSG device node>'.format(sys.argv[0]))
     print()
+    print("--version: UFS EOM version")
+    print("--help: show this help menu")
     print("--side: 'local' or 'peer'")
     print("--lane: lane no. 0 or 1, collect EOM data for all connected lanes if not given")
     print("--voltage: collect EOM data for this voltage only")
@@ -300,6 +303,14 @@ def check_path(path):
 
 
 if __name__ == "__main__":
+
+    if sys.argv[1] == '--version':
+        print('ufseom version:', EomVersion)
+        sys.exit(2)
+
+    if sys.argv[1] == '--help':
+        print_usage()
+        sys.exit(2)
 
     if len(sys.argv) < 4:
         print_usage()
