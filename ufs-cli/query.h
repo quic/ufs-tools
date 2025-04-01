@@ -139,6 +139,98 @@ static struct ufs_characteristics ufs_flags[] = {
 	{INIT, NULL},
 };
 
+static void interpret_extended_ufs_features(__u8 *val, size_t len)
+{
+	if (len < 4) {
+		printf("  # [Incomplete data for extended features]");
+		return;
+	}
+
+	__u32 features = be32toh(*(__be32*)val);
+	printf("\n    # Extended UFS Features Support:\n");
+	printf("    # %-35s: %s\n", "Field Firmware Update (FFU)",
+		(features & (1 << 0)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Production State Awareness (PSA)",
+		(features & (1 << 1)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Device Life Span",
+		(features & (1 << 2)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Refresh Operation",
+		(features & (1 << 3)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "High Temperature Operation",
+		(features & (1 << 4)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Low Temperature Operation",
+		(features & (1 << 5)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Extended Temperature",
+		(features & (1 << 6)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "HPB Extension",
+		(features & (1 << 7)) ? "Supported" : "Not supported");
+	/* New features beyond original bUFSFeaturesSupport */
+	printf("    # %-35s: %s\n", "WriteBooster",
+		(features & (1 << 8)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Performance Throttling",
+		(features & (1 << 9)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Advanced RPMB",
+		(features & (1 << 10)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Barrier Support",
+		(features & (1 << 14)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "Clear Error History",
+		(features & (1 << 15)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "EXT_IID Support",
+		(features & (1 << 16)) ? "Supported" : "Not supported");
+	printf("    # %-35s: %s\n", "File Based Optimization (FBO)",
+		(features & (1 << 17)) ? "Supported" : "Not supported");
+}
+
+
+static const struct ufs_desc_item ufs_dev_desc[] = {
+	{0x00, "bLength",  NULL},
+	{0x01, "bDescriptorIDN", NULL},
+	{0x02, "bDevice", NULL},
+	{0x03, "bDeviceClass", NULL},
+	{0x04, "bDeviceSubClass"},
+	{0x05, "bProtocol", NULL},
+	{0x06, "bNumberLU", NULL},
+	{0x07, "bNumberWLU", NULL},
+	{0x08, "bBootEnable", NULL},
+	{0x09, "bDescrAccessEn", NULL},
+	{0x0A, "bInitPowerMode", NULL},
+	{0x0B, "bHighPriorityLUN", NULL},
+	{0x0C, "bSecureRemovalType", NULL},
+	{0x0D, "bSecurityLU", NULL},
+	{0x0E, "bBackgroundOpsTermLat", NULL},
+	{0x0F, "bInitActiveICCLevel", NULL},
+	{0x10, "wSpecVersion", NULL},
+	{0x12, "wManufactureDate", NULL},
+	{0x14, "iManufacturerName", NULL},
+	{0x15, "iProductName", NULL},
+	{0x16, "iSerialNumber", NULL},
+	{0x17, "iOemID", NULL},
+	{0x18, "wManufacturerID", NULL},
+	{0x1A, "bUD0BaseOffset", NULL},
+	{0x1B, "bUDConfigPLength", NULL},
+	{0x1C, "bDeviceRTTCap", NULL},
+	{0x1D, "wPeriodicRTCUpdate", NULL},
+	{0x1F, "bUFSFeaturesSupport", NULL},
+	{0x20, "bFFUTimeout", NULL},
+	{0x21, "bQueueDepth", NULL},
+	{0x22, "wDeviceVersion", NULL},
+	{0x24, "bNumSecureWPArea", NULL},
+	{0x25, "dPSAMaxDataSize", NULL},
+	{0x29, "bPSAStateTimeout", NULL},
+	{0x2A, "iProductRevisionLevel", NULL},
+	{0x2B, "Reserved[5]", NULL},       // JESD220G Page 433
+	{0x30, "Reserved[16]", NULL},      // Reserved for UME
+	{0x40, "Reserved[3]", NULL},       // Reserved for HPB
+	{0x43, "Reserved[10]", NULL},      // JESD220G Page 433
+	{0x4D, "wExtendedWriteBoosterSupport", NULL},
+	{0x4F, "dExtendedUFSFeaturesSupport", interpret_extended_ufs_features},
+	{0x53, "bWriteBoosterBufferPreserveUserSpaceEn", NULL},
+	{0x54, "bWriteBoosterBufferType", NULL},
+	{0x55, "dNumSharedWriteBoosterBufferAllocUnits", NULL},
+	/* Terminator */
+	{INIT, NULL, NULL}
+};
+
 int init_query_operation(int argc, char *argv[], void *op_data);
 int query_read_descriptor(int fd, int idn, int index, int sel, __u8 *buf, __u16 buf_len);
 int do_query_operation(void *op_data);

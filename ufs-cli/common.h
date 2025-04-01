@@ -29,9 +29,24 @@
 #define DWORD(b3, b2, b1, b0) htobe32(((b3) << 24) | ((b2) << 16) |\
 				      ((b1) << 8) | (b0))
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 struct ufs_characteristics {
 	__u32 id;
 	const char *name;
+};
+
+/**
+ * struct ufs_desc_item - UFS descriptor field information
+ * @offset: Byte offset of the field in the descriptor
+ * @name: Field name (prefix determines size: b=1,w=2,d=4,q=8)
+ * @interpreter: Optional interpretation function (NULL for simple fields)
+ *               Parameters: pointer to raw value and its length
+ */
+struct ufs_desc_item {
+	__u8 offset;
+	const char *name;
+	void (*interpreter)(__u8 *val, size_t len);
 };
 
 int get_ull_from_cli(unsigned long long *val);
