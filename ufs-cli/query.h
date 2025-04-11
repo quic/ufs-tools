@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "common.h"
+#include "query_desc.h"
 
 #define DESCRIPTOR_BUFFER_SIZE	256 /* enough for recent years */
 
@@ -193,7 +194,7 @@ static const struct ufs_desc_item ufs_dev_desc[] = {
 	{0x40, "Reserved[3]", NULL},       // Reserved for HPB
 	{0x43, "Reserved[10]", NULL},      // JESD220G Page 433
 	{0x4D, "wExtendedWriteBoosterSupport", NULL},
-	{0x4F, "dExtendedUFSFeaturesSupport", NULL},
+	{0x4F, "dExtendedUFSFeaturesSupport", interpret_extended_ufs_features},
 	{0x53, "bWriteBoosterBufferPreserveUserSpaceEn", NULL},
 	{0x54, "bWriteBoosterBufferType", NULL},
 	{0x55, "dNumSharedWriteBoosterBufferAllocUnits", NULL},
