@@ -3,6 +3,7 @@
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <endian.h>
 #include "lsufs.h"
 #include "ufs_bsg.h"
 #include "upiu.h"
@@ -263,6 +264,102 @@ static void dump_descriptor(__u8 *desc_buf, __u16 len)
 		printf("Offset 0x%x : 0x%x\n", i, *desc_buf);
 }
 
+/**
+ * ufs_desc_field_size - Determine the size of a descriptor field based on its name prefix
+ * @name: Field name string
+ *
+ * Determines the field size using the following naming convention, this matches the UFS
+ * specification's descriptor field naming scheme:
+ *   - 'w' prefix → 2 bytes (word)
+ *   - 'd' prefix → 4 bytes (dword)
+ *   - 'q' prefix → 8 bytes (qword)
+ *   - 'b'/'i' prefix  → 1 byte (byte)
+ *
+ * Returns: Number of bytes for the field (1, 2, 4, or 8)
+ */
+static size_t ufs_desc_field_size(const char *name)
+{
+	if (!name || !name[0])
+		return 1; // Default to 1 byte
+
+	switch (name[0]) {
+		case 'w':
+			return 2; // Word (2 bytes)
+		case 'd':
+			return 4; // Dword (4 bytes)
+		case 'q':
+			return 8; // Qword (8 bytes)
+		case 'b':
+		case 'i':
+		default:
+			return 1; // Byte (1 byte)
+	}
+}
+
+/**
+ * ufs_desc_interpretation - Generic UFS descriptor interpretation function
+ * @desc_buf: Descriptor buffer
+ * @len: Length of valid descriptor data
+ * @desc_fields: Array of descriptor field definitions
+ * @desc_name: Human-readable descriptor name for output
+ *
+ * This generic function can interpret any UFS descriptor type when provided
+ * with the appropriate field definition array.
+ */
+static void ufs_desc_interpretation(__u8 *desc_buf, __u16 len,
+                                  const struct ufs_desc_item *desc_fields,
+                                  const char *desc_name)
+{
+	if (!desc_buf || len < 1 || !desc_fields) {
+		printf("Invalid descriptor parameters\n");
+		return;
+	}
+
+	printf("UFS %s Descriptor:\n", desc_name);
+	printf("===========================================\n");
+
+	for (int i = 0; desc_fields[i].name != NULL; i++) {
+		const struct ufs_desc_item *item = &desc_fields[i];
+		size_t size = ufs_desc_field_size(item->name);
+
+		if (strncmp(item->name, "Reserved", 8) == 0)
+			/* Skip reserved fields */
+			continue;
+
+		/* Check buffer bounds - stop at either buffer end or descriptor end */
+		if (item->offset + size > MIN(len, desc_buf[0]))
+			break;
+
+		printf("0x%02X: %-35s = ", item->offset, item->name);
+
+		/* Print value with proper size and endianness */
+		switch(size) {
+			case 1:
+				printf("0x%02X", desc_buf[item->offset]);
+				break;
+			case 2:
+				printf("0x%04X", be16toh(*(__be16*)(desc_buf + item->offset)));
+				break;
+			case 4:
+				printf("0x%08X", be32toh(*(__be32*)(desc_buf + item->offset)));
+				break;
+			case 8:
+				printf("0x%016lX", be64toh(*(__be64*)(desc_buf + item->offset)));
+				break;
+			default:
+				printf("[Invalid Size]");
+				break;
+		}
+
+		/* Call interpreter if available */
+		if (item->interpreter) {
+			item->interpreter(desc_buf + item->offset, size);
+		}
+
+		printf("\n");
+	}
+}
+
 static int do_query_read_descriptor(struct lsufs_operation *lsufs_op)
 {
 	struct query_operation *qop = &lsufs_op->query_op;
@@ -279,8 +376,13 @@ static int do_query_read_descriptor(struct lsufs_operation *lsufs_op)
 		return ret;
 	}
 
-	printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
-	dump_descriptor(buf, buf_len);
+	if (id == 0) {
+		ufs_desc_interpretation(buf, buf_len, ufs_dev_desc, "Device");
+		dump_hex(buf, buf_len);
+	} else {
+		printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
+		dump_descriptor(buf, buf_len);
+	}
 
 	return ret;
 }

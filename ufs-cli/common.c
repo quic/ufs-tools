@@ -75,3 +75,29 @@ int characteristics_look_up(struct ufs_characteristics *c, __u32 id)
 
 	return i;
 }
+
+/**
+ * dump_hex - Hexadecimal dump of data
+ * @buf: Descriptor data buffer
+ * @len: Length of buffer
+ */
+void dump_hex(__u8 *buf, __u16 len)
+{
+	__u32 offset;
+
+	printf("\nHex Dump Raw Data:\n");
+
+	for (offset = 0; offset < len; offset++) {
+		if (offset % 16 == 0)
+			printf("%s0x%02x:%s ",
+				(offset < 64) ? "\033[1;32m" : "\033[1;34m", offset, "\033[0m");
+
+		printf("%02x ", buf[offset]);
+
+		if (offset % 16 == 15)
+			printf("\n");
+	}
+
+	if (offset % 16 != 0)
+		printf("\n");
+}
