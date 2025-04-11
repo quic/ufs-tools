@@ -29,6 +29,8 @@
 #define DWORD(b3, b2, b1, b0) htobe32(((b3) << 24) | ((b2) << 16) |\
 				      ((b1) << 8) | (b0))
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 struct ufs_characteristics {
 	__u32 id;
 	const char *name;
@@ -38,4 +40,5 @@ int get_ull_from_cli(unsigned long long *val);
 int get_value_from_cli(int *val);
 int init_device_path(char *path);
 int characteristics_look_up(struct ufs_characteristics *c, __u32 id);
+void dump_hex(__u8 *buf, __u16 len);
 #endif /* __COMMON_H__ */
