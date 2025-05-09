@@ -279,8 +279,13 @@ static int do_query_read_descriptor(struct lsufs_operation *lsufs_op)
 		return ret;
 	}
 
-	printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
-	dump_descriptor(buf, buf_len);
+	if (id == 0) {
+		ufs_desc_translate(buf, buf_len, ufs_dev_desc, "Device");
+		dump_hex(buf, buf_len);
+	} else {
+		printf("Descriptor IDN 0x%x - %s :\n", qop->idn, id < 0 ? "???" : ufs_descriptors[id].name);
+		dump_descriptor(buf, buf_len);
+	}
 
 	return ret;
 }

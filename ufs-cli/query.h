@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "common.h"
+#include "query_desc.h"
 
 #define DESCRIPTOR_BUFFER_SIZE	256 /* enough for recent years */
 
@@ -23,6 +24,19 @@
 #define MANUFACTURER_NAME_OFFSET		0x14
 #define PRODUCT_NAME_OFFSET			0x15
 #define PRODUCT_REVISION_LEVEL_OFFSET		0x2A
+
+/**
+ * struct ufs_desc_item - UFS descriptor field information
+ * @offset: Byte offset of the field in the descriptor
+ * @name: Field name (prefix determines size: b=1,w=2,d=4,q=8)
+ * @translate: Optional translate function (NULL for simple fields)
+ *             Parameters: pointer to raw value and its length
+ */
+struct ufs_desc_item {
+	__u8 offset;
+	const char *name;
+	void (*translate)(__u8 *val, size_t len);
+};
 
 enum {
 	QUERY_REQ_FUNC_STD_READ		= 0x01,
@@ -139,7 +153,58 @@ static struct ufs_characteristics ufs_flags[] = {
 	{INIT, NULL},
 };
 
+static const struct ufs_desc_item ufs_dev_desc[] = {
+	{0x00, "bLength",  NULL},
+	{0x01, "bDescriptorIDN", NULL},
+	{0x02, "bDevice", NULL},
+	{0x03, "bDeviceClass", NULL},
+	{0x04, "bDeviceSubClass"},
+	{0x05, "bProtocol", NULL},
+	{0x06, "bNumberLU", NULL},
+	{0x07, "bNumberWLU", NULL},
+	{0x08, "bBootEnable", NULL},
+	{0x09, "bDescrAccessEn", NULL},
+	{0x0A, "bInitPowerMode", NULL},
+	{0x0B, "bHighPriorityLUN", NULL},
+	{0x0C, "bSecureRemovalType", NULL},
+	{0x0D, "bSecurityLU", NULL},
+	{0x0E, "bBackgroundOpsTermLat", NULL},
+	{0x0F, "bInitActiveICCLevel", NULL},
+	{0x10, "wSpecVersion", NULL},
+	{0x12, "wManufactureDate", NULL},
+	{0x14, "iManufacturerName", NULL},
+	{0x15, "iProductName", NULL},
+	{0x16, "iSerialNumber", NULL},
+	{0x17, "iOemID", NULL},
+	{0x18, "wManufacturerID", NULL},
+	{0x1A, "bUD0BaseOffset", NULL},
+	{0x1B, "bUDConfigPLength", NULL},
+	{0x1C, "bDeviceRTTCap", NULL},
+	{0x1D, "wPeriodicRTCUpdate", NULL},
+	{0x1F, "bUFSFeaturesSupport", NULL},
+	{0x20, "bFFUTimeout", NULL},
+	{0x21, "bQueueDepth", NULL},
+	{0x22, "wDeviceVersion", NULL},
+	{0x24, "bNumSecureWPArea", NULL},
+	{0x25, "dPSAMaxDataSize", NULL},
+	{0x29, "bPSAStateTimeout", NULL},
+	{0x2A, "iProductRevisionLevel", NULL},
+	{0x2B, "Reserved[5]", NULL},       // JESD220G Page 433
+	{0x30, "Reserved[16]", NULL},      // Reserved for UME
+	{0x40, "Reserved[3]", NULL},       // Reserved for HPB
+	{0x43, "Reserved[10]", NULL},      // JESD220G Page 433
+	{0x4D, "wExtendedWriteBoosterSupport", NULL},
+	{0x4F, "dExtendedUFSFeaturesSupport", translate_extended_ufs_features},
+	{0x53, "bWriteBoosterBufferPreserveUserSpaceEn", NULL},
+	{0x54, "bWriteBoosterBufferType", NULL},
+	{0x55, "dNumSharedWriteBoosterBufferAllocUnits", NULL},
+	/* Terminator */
+	{INIT, NULL, NULL}
+};
+
 int init_query_operation(int argc, char *argv[], void *op_data);
 int query_read_descriptor(int fd, int idn, int index, int sel, __u8 *buf, __u16 buf_len);
 int do_query_operation(void *op_data);
+void ufs_desc_translate(__u8 *desc_buf, __u16 len, const struct ufs_desc_item *desc_fields, const char *desc_name);
+
 #endif /* __QUERY_H__ */

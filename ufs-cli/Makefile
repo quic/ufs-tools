@@ -1,5 +1,14 @@
-LSUFS_OBJS := shell.o uic.o query.o ufs_bsg.o common.o lsufs.o
-EOM_OBJS := uic.o query.o ufs_bsg.o common.o ufs_eom.o
+# Common objects shared by both executables
+COMMON_OBJS := uic.o query.o ufs_bsg.o common.o query_trans.o
+
+# Unique objects for each executable
+LSUFS_UNIQUE_OBJS := shell.o lsufs.o
+EOM_UNIQUE_OBJS := ufs_eom.o
+
+# Combined object lists
+LSUFS_OBJS := $(LSUFS_UNIQUE_OBJS) $(COMMON_OBJS)
+EOM_OBJS := $(EOM_UNIQUE_OBJS) $(COMMON_OBJS)
+
 CC := gcc
 CFLAGS := -o0 -g -I. -D_GNU_SOURCE
 LDFLAGS :=
