@@ -43,6 +43,7 @@
 #define PA_PWRMODE				0x1571
 #define PA_TXHSADAPTTYPE			0x15D4
 #define PA_RXGEAR				0x1583
+#define RX_HSRATE_SERIES			0xA2
 
 #define RX_EYEMON_START_MASK			0x1
 
@@ -56,6 +57,8 @@
 #define PA_INITIAL_ADAPT       0x01
 #define PA_NO_ADAPT            0x03
 
+#define PA_HS_MODE_A		1
+#define PA_HS_MODE_B		2
 
 enum uic_operation_mode {
 	GET,
