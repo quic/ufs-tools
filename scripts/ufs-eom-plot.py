@@ -44,6 +44,7 @@ class ufs_eye_monitor_plot(object):
         self.voltage_max_steps = 0
         self.voltage_max_offset = 0
         self.voltage_step = 0
+        self.lane_list = []
         self.lane0_timing_list = []
         self.lane0_timing_list_adj = []
         self.lane0_timing_list_set = []
@@ -118,6 +119,8 @@ class ufs_eye_monitor_plot(object):
 
             try:
                 lane_no = int(line_list[1])
+                if lane_no not in self.lane_list:
+                    self.lane_list.append(lane_no)
                 timing = self.string_to_number(line_list[3])
                 voltage = self.string_to_number(line_list[5])
                 error_count = self.string_to_number(line_list[8])
@@ -185,16 +188,11 @@ class ufs_eye_monitor_plot(object):
             voltage_adj = round((voltage * self.voltage_step), 2)
             self.lane1_voltage_list_adj.append(voltage_adj)
 
-        missing_data_count = self.validate_data(0)
-        if missing_data_count != 0:
-            return
-
-        missing_data_count = self.validate_data(1)
-        if missing_data_count != 0:
-            return
-
-        self.plot_eye(0)
-        self.plot_eye(1)
+        for lane in self.lane_list:
+            missing_data_count = self.validate_data(lane)
+            if missing_data_count != 0:
+                return
+            self.plot_eye(lane)
 
         return
 
