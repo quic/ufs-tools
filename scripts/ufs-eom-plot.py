@@ -4,6 +4,7 @@
 import sys
 import pdb
 import csv
+import re
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -12,12 +13,22 @@ import matplotlib.patches as patches
 import matplotlib.colors as mcolors
 from matplotlib.colors import ListedColormap
 
+# Per M-PHY SPEC V5.0, eye width is 0.3UI for Gear-5
+T_EYE_HS_G5_RX = 0.3
+# Per M-PHY SPEC V5.0, eye width is 0.48UI for Gear-4
+T_EYE_HS_G4_RX = 0.48
+# Per M-PHY SPEC V5.0, eye height is 60mV for Gear-5
+V_DIF_AC_HS_G5_RX = 30
+# Per M-PHY SPEC V5.0, eye height is 80mV for Gear-4
+V_DIF_AC_HS_G4_RX = 40
+
 class ufs_eye_monitor_plot(object):
     def __init__(self):
         self.file_name = None
         self.fd = None
         self.file_data = None
         self.match_line_list = ['lane', 'timing', 'voltage', 'error count']
+        self.single_lane_eom_pass = True
 
     def string_to_number(self, str_val):
         if str_val[0] == '-':
@@ -44,6 +55,8 @@ class ufs_eye_monitor_plot(object):
         self.voltage_max_steps = 0
         self.voltage_max_offset = 0
         self.voltage_step = 0
+        self.lane_list = []
+        self.eom_pass = []
         self.lane0_timing_list = []
         self.lane0_timing_list_adj = []
         self.lane0_timing_list_set = []
@@ -69,6 +82,7 @@ class ufs_eye_monitor_plot(object):
 
         self.bad_data_count = 0
         self.line_no = 0
+        self.gear = 0
 
         self.ufs_version_no = ''
         self.ufs_device_mfr_name = ''
@@ -102,9 +116,9 @@ class ufs_eye_monitor_plot(object):
             if 'UFS Total Size:' in line:
                 if line_list[4] == 'UFS' and line_list[5] == 'Total' and line_list[6] == 'Size:':
                     self.ufs_device_size = line_list[7] + line_list[8]
-            if 'UFS Speed: Gear' in line:
-                if line_list[4] == 'UFS' and line_list[5] == 'Speed:' and line_list[6] == 'Gear':
-                    self.ufs_gear = 'HSG{:s} {:s} {:s} {:s} {:s}'.format(line_list[7], line_list[8], line_list[9], line_list[10], line_list[11])
+            if 'UFS Gear Speed:' in line:
+                if line_list[4] == 'UFS' and line_list[5] == 'Gear' and line_list[6] == 'Speed:':
+                    self.ufs_gear = '{:s} {:s}'.format(line_list[7], line_list[8])
             if 'Side Eye Monitor Start' in line:
                 if line_list[0] == 'UFS' and line_list[2] == 'Side' and line_list[3] == 'Eye' and line_list[4] == 'Monitor' and line_list[5] == 'Start':
                     self.side = line_list[1]
@@ -118,14 +132,21 @@ class ufs_eye_monitor_plot(object):
 
             try:
                 lane_no = int(line_list[1])
+                if lane_no not in self.lane_list:
+                    self.lane_list.append(lane_no)
                 timing = self.string_to_number(line_list[3])
                 voltage = self.string_to_number(line_list[5])
                 error_count = self.string_to_number(line_list[8])
+                self.gear = int(re.search(r'(?<=HS-G)\d+', self.ufs_gear).group())
             except:
                 self.bad_data_count += 1
                 print('Error on Line number {:d}: BAD Data.. plese check this below line in the log'.format(self.line_no))
                 print(line)
                 continue
+
+            if self.gear < 4:
+                 print('Unsupported gear {:d}\n'.format(self.gear))
+                 return False
 
             if lane_no == 0:
                 self.lane0_timing_list.append(timing)
@@ -185,18 +206,13 @@ class ufs_eye_monitor_plot(object):
             voltage_adj = round((voltage * self.voltage_step), 2)
             self.lane1_voltage_list_adj.append(voltage_adj)
 
-        missing_data_count = self.validate_data(0)
-        if missing_data_count != 0:
-            return
+        for lane in self.lane_list:
+            missing_data_count = self.validate_data(lane)
+            if missing_data_count != 0:
+                return
+            self.eom_pass.append(self.plot_eye(lane))
 
-        missing_data_count = self.validate_data(1)
-        if missing_data_count != 0:
-            return
-
-        self.plot_eye(0)
-        self.plot_eye(1)
-
-        return
+        return all(self.eom_pass)
 
     def validate_data(self, lane_no):
         missing_data_count = 0
@@ -235,7 +251,14 @@ class ufs_eye_monitor_plot(object):
                     print('Lane={:d} Timing={:d} Voltage={:d}'.format(lane_no, time, volt))
         return missing_data_count
 
+    def in_eye_mask(self, x, y):
+        if self.gear == 5:
+            return (abs(x)/(T_EYE_HS_G5_RX/2) + abs(y)/V_DIF_AC_HS_G5_RX) <= 1
+        else:
+            return (abs(x)/(T_EYE_HS_G4_RX/2) + abs(y)/V_DIF_AC_HS_G4_RX) <= 1
+
     def plot_eye(self, lane_no):
+        self.single_lane_eom_pass = True
         assert((lane_no == 0) or (lane_no == 1))
         if lane_no == 0:
             lane_title = 'Lane 0'
@@ -263,23 +286,12 @@ class ufs_eye_monitor_plot(object):
             print('wrong lane_no')
             return
 
-        if x_len <= 34:
-            eye_width = 5
-        elif x_len <= 66:
-            eye_width = 10
-        elif x_len <= 129:
-            eye_width = 20
+        if self.gear == 5:
+            eye_width = T_EYE_HS_G5_RX/2/self.timing_step
+            eye_height = V_DIF_AC_HS_G5_RX/self.voltage_step
         else:
-            eye_width = 0
-
-        if y_len <= 50:
-            eye_height = 5
-        elif y_len <= 130:
-            eye_height = 11
-        elif y_len <= 201:
-            eye_height = 14
-        else:
-            eye_height = 0
+            eye_width = T_EYE_HS_G4_RX/2/self.timing_step
+            eye_height = V_DIF_AC_HS_G4_RX/self.voltage_step
 
         fig, ax1 = plt.subplots(sharex=True, sharey=True)
 
@@ -310,6 +322,11 @@ class ufs_eye_monitor_plot(object):
         else:
             title_2 = 'Y-axis  : Voltage: Voltage Information is missing in the log'
 
+        for (x,y,e) in zip(lane_timing_list_adj, lane_voltage_list_adj, lane_error_count_list):
+            if e > 0 and self.in_eye_mask(x,y):
+                self.single_lane_eom_pass = False
+                break
+
         title = title_1 + '\n' + title_2 + '\n' + title_3
         ax2.set_title(title, fontsize=17, fontweight='bold', loc='center')
         ax2.set_xlabel('UI', fontsize=14, fontweight='bold')
@@ -318,7 +335,24 @@ class ufs_eye_monitor_plot(object):
         ax2.invert_yaxis()
         ax2.yaxis.label.set_color('green')
 
+        poly1_coords = [
+            (x_mid - eye_width, y_mid),
+            (x_mid, y_mid + eye_height),
+            (x_mid + eye_width, y_mid),
+            (x_mid, y_mid - eye_height),
+        ]
+
+        poly1 = patches.Polygon(poly1_coords, closed=True, color='yellow')
+        ax2.add_patch(poly1)
+
+        if self.single_lane_eom_pass == True:
+            plt.text(x_mid, y_mid, 'PASS', fontsize=12, ha='center', va='center', color='green')
+        else:
+            plt.text(x_mid, y_mid, 'FAIL', fontsize=12, ha='center', va='center', color='red')
+
         plt.show()
+
+        return self.single_lane_eom_pass
 
 def print_usage():
     print('-' * 60)

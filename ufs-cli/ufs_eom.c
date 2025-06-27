@@ -764,6 +764,9 @@ skip_io_prepare:
 	}
 	memset(data->er, 0, eom_result_size);
 
+	/* Set seed for a new sequence of pseudo-random integers */
+	srand((unsigned)clock());
+
 	printf("Start EOM Scan...\n");
 	clock_gettime(CLOCK_MONOTONIC, &ts_start);
 	/* Main loop starts here */
