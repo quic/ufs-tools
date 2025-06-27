@@ -52,6 +52,8 @@ struct EOMData {
 	int data_cnt;
 	int num_lanes;
 	int local_peer;
+	int gear;
+	int rate;
 
 	struct eom_result *er;
 } eom_data;
@@ -130,7 +132,7 @@ static void populate_data_pattern(char *buffer)
 {
 	unsigned int i, val;
 	unsigned int size = EOM_TEMP_DATA_SIZE / sizeof(int);
-	uint64_t seed = 99098;
+	uint64_t seed = rand();
 	int *buf = (int *)buffer;
 
 	for (i = 0; i < size; i++) {
@@ -323,14 +325,15 @@ repeat_eom_scan:
 	if (!do_io)
 		goto skip_io;
 
-	if (peer == PEER) {
-		/* Write to excercise peer device's Rx */
-		ret = pwrite(tmp_fd, tmp_buf, EOM_TEMP_DATA_SIZE, 0);
-		if (ret < 0) {
-			pr_err("Failed to write tmp file\n");
-			return ERROR;
-		}
-	} else {
+	/* Write to excercise peer device's Rx */
+	populate_data_pattern(tmp_buf);
+	ret = pwrite(tmp_fd, tmp_buf, EOM_TEMP_DATA_SIZE, 0);
+	if (ret < 0) {
+		pr_err("Failed to write tmp file\n");
+		return ERROR;
+	}
+
+	if (peer == LOCAL) {
 		/* Read to excercise local device's Rx */
 		ret = pread(tmp_fd, tmp_buf, EOM_TEMP_DATA_SIZE, 0);
 		if (ret < 0){
@@ -409,6 +412,7 @@ static int generate_eom_report(char *eom_file, struct EOMData *data)
 
 	fprintf(file, "UFS %s Side Eye Monitor Start\n", data->local_peer ? "Device" : "Host");
 	fprintf(file, "- - - - UFS INQUIRY ID: %s %s %s\n", mname, pname, pver);
+	fprintf(file, "- - - - UFS Gear Speed: HS-G%d Rate-%c\n", data->gear, data->rate == PA_HS_MODE_A ? 'A' : 'B');
 	fprintf(file, "EOM Capabilities:\n");
 	fprintf(file, "TimingMaxSteps %d TimingMaxOffset %d\n", data->timing_max_steps, data->timing_max_offset);
 	fprintf(file, "VoltageMaxSteps %d VoltageMaxOffset %d\n\n", data->voltage_max_steps, data->voltage_max_offset);
@@ -611,7 +615,7 @@ int main(int argc, char *argv[])
 	struct timespec ts_start, ts_end;
 	char tmp_file[1024], output_file[1024], eom_file_name[256], lane_str[8];
 	size_t eom_result_size;
-	int t, v, l, n, eom_cap, cur_gear, ret;
+	int t, v, l, n, eom_cap, cur_gear, cur_rate, ret;
 
 	init_eom_operation();
 
@@ -653,6 +657,20 @@ int main(int argc, char *argv[])
 		goto close_bsg;
 	}
 
+	data->gear = cur_gear;
+
+	/* Get RX_HSRATE_Series */
+	cur_rate = uic_get(bsg_fd, UIC_ARG_MIB_SEL(RX_HSRATE_SERIES, SELECT_RX(0)), 0);
+	if (cur_rate < 0) {
+		pr_err("Failed to get current rate from RX_HSRATE_Series\n");
+		ret = ERROR;
+		goto close_bsg;
+	} else if (verbose) {
+		printf("RX_HSRATE_Series: %d\n", cur_rate);
+	}
+
+	data->rate = cur_rate;
+
 	if (!do_io)
 		goto skip_io_prepare;
 
@@ -671,14 +689,6 @@ int main(int argc, char *argv[])
 		pr_err("Failed to allocate memory for I/O\n");
 		ret = ERROR;
 		goto close_tmp;
-	}
-
-	/* Prepare temp file for I/O */
-	populate_data_pattern(tmp_buf);
-	ret = pwrite(tmp_fd, tmp_buf, EOM_TEMP_DATA_SIZE, 0);
-	if (ret < 0) {
-		pr_err("Failed to create tmp file for I/O\n");
-		goto out;
 	}
 
 skip_io_prepare:
