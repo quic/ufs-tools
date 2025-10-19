@@ -21,6 +21,7 @@ T_EYE_HS_G4_RX = 0.48
 V_DIF_AC_HS_G5_RX = 30
 # Per M-PHY SPEC V5.0, eye height is 80mV for Gear-4
 V_DIF_AC_HS_G4_RX = 40
+INVALID_ERROR_COUNT = 999
 
 class ufs_eye_monitor_plot(object):
     def __init__(self):
@@ -29,6 +30,7 @@ class ufs_eye_monitor_plot(object):
         self.file_data = None
         self.match_line_list = ['lane', 'timing', 'voltage', 'error count']
         self.single_lane_eom_pass = True
+        self.single_lane_eom_skip_result = False
 
     def string_to_number(self, str_val):
         if str_val[0] == '-':
@@ -149,15 +151,9 @@ class ufs_eye_monitor_plot(object):
                  return False
 
             if lane_no == 0:
-                self.lane0_timing_list.append(timing)
-                self.lane0_voltage_list.append(voltage)
-                self.lane0_error_count_list.append(error_count)
                 key = 't#{:d}#v#{:d}'.format(timing, voltage)
                 self.lane0_data[key] = error_count
             elif lane_no == 1:
-                self.lane1_timing_list.append(timing)
-                self.lane1_voltage_list.append(voltage)
-                self.lane1_error_count_list.append(error_count)
                 key = 't#{:d}#v#{:d}'.format(timing, voltage)
                 self.lane1_data[key] = error_count
             else:
@@ -173,6 +169,32 @@ class ufs_eye_monitor_plot(object):
         print('-' * 50)
         print('Parsed [{:d}] lines from the log file [{:s}]\n'.format(self.line_no, filename))
         print('-' * 50)
+        for lane in self.lane_list:
+            for timing in range(-self.timing_max_steps, self.timing_max_steps + 1):
+                for voltage in range(-self.voltage_max_steps, self.voltage_max_steps + 1):
+                    if lane == 0:
+                        self.lane0_timing_list.append(timing)
+                        self.lane0_voltage_list.append(voltage)
+                        key = 't#{:d}#v#{:d}'.format(timing, voltage)
+                        try:
+                            error_count = self.lane0_data[key]
+                            self.lane0_error_count_list.append(error_count)
+                        except KeyError:
+                            self.lane0_data[key] = INVALID_ERROR_COUNT
+                            self.lane0_error_count_list.append(INVALID_ERROR_COUNT)
+                    elif lane == 1:
+                        self.lane1_timing_list.append(timing)
+                        self.lane1_voltage_list.append(voltage)
+                        key = 't#{:d}#v#{:d}'.format(timing, voltage)
+                        try:
+                            error_count = self.lane1_data[key]
+                            self.lane1_error_count_list.append(error_count)
+                        except KeyError:
+                            self.lane1_data[key] = INVALID_ERROR_COUNT
+                            self.lane1_error_count_list.append(INVALID_ERROR_COUNT)
+                    else:
+                        print('wrong lane_no')
+                        return
 
         #Lane-0 data tweaks
         self.lane0_timing_list_set = sorted(set(self.lane0_timing_list), key=int)
@@ -297,8 +319,8 @@ class ufs_eye_monitor_plot(object):
 
         df0 = pd.DataFrame(list(zip(lane_timing_list_adj, lane_voltage_list_adj, lane_error_count_list)), columns=['UI', 'mV', 'count'])
         df1 = df0.pivot(index='mV', columns='UI', values='count')
-        colors = ['#008000', '#FF0000', '#EE4040', '#DD2C2C', '#CD2626', '#8B3A3A', '#600000', '#000000']
-        boundaries = [0, 1, 10, 20, 30, 40, 50, 60, 63]
+        colors = ['#008000', '#FF0000', '#EE4040', '#DD2C2C', '#CD2626', '#8B3A3A', '#600000', '#000000', '#777777']
+        boundaries = [0, 1, 10, 20, 30, 40, 50, 60, 64, 999]
         cmap = mcolors.LinearSegmentedColormap.from_list('custom_cmap', colors, N=256)
         norm = mcolors.BoundaryNorm(boundaries=boundaries, ncolors=256)
         ax2 = sns.heatmap(df1, annot=False, cmap=cmap, ax=ax1, norm=norm)
@@ -323,7 +345,9 @@ class ufs_eye_monitor_plot(object):
             title_2 = 'Y-axis  : Voltage: Voltage Information is missing in the log'
 
         for (x,y,e) in zip(lane_timing_list_adj, lane_voltage_list_adj, lane_error_count_list):
-            if e > 0 and self.in_eye_mask(x,y):
+            if e == INVALID_ERROR_COUNT and self.in_eye_mask(x,y):
+                self.single_lane_eom_skip_result = True
+            elif e > 0 and e < INVALID_ERROR_COUNT and self.in_eye_mask(x,y) :
                 self.single_lane_eom_pass = False
                 break
 
@@ -345,10 +369,11 @@ class ufs_eye_monitor_plot(object):
         poly1 = patches.Polygon(poly1_coords, closed=True, color='yellow')
         ax2.add_patch(poly1)
 
-        if self.single_lane_eom_pass == True:
-            plt.text(x_mid, y_mid, 'PASS', fontsize=12, ha='center', va='center', color='green')
-        else:
-            plt.text(x_mid, y_mid, 'FAIL', fontsize=12, ha='center', va='center', color='red')
+        if self.single_lane_eom_skip_result == False:
+            if self.single_lane_eom_pass == True:
+                plt.text(x_mid, y_mid, 'PASS', fontsize=12, ha='center', va='center', color='green')
+            else:
+                plt.text(x_mid, y_mid, 'FAIL', fontsize=12, ha='center', va='center', color='red')
 
         plt.show()
 
