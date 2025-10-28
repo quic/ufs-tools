@@ -82,6 +82,10 @@ class ufs_eye_monitor_plot(object):
         self.lane1_x_mid = 0
         self.lane1_y_mid = 0
 
+        # Eye center calculation variables
+        self.lane0_eye_center = None
+        self.lane1_eye_center = None
+
         self.bad_data_count = 0
         self.line_no = 0
         self.gear = 0
@@ -232,6 +236,8 @@ class ufs_eye_monitor_plot(object):
             missing_data_count = self.validate_data(lane)
             if missing_data_count != 0:
                 return
+            # Calculate eye center
+            self.calculate_eye_width_center(lane)
             self.eom_pass.append(self.plot_eye(lane))
 
         return all(self.eom_pass)
@@ -273,11 +279,74 @@ class ufs_eye_monitor_plot(object):
                     print('Lane={:d} Timing={:d} Voltage={:d}'.format(lane_no, time, volt))
         return missing_data_count
 
-    def in_eye_mask(self, x, y):
-        if self.gear == 5:
-            return (abs(x)/(T_EYE_HS_G5_RX/2) + abs(y)/V_DIF_AC_HS_G5_RX) <= 1
+    def find_eye_width_boundary(self, lane_data, direction):
+        boundary = None
+
+        if direction == 'right':
+            timing_range = range(0, self.timing_max_steps + 1)
+            boundary_max = self.timing_max_steps
+        elif direction == 'left':
+            timing_range = range(0, -self.timing_max_steps - 1, -1)
+            boundary_max = -self.timing_max_steps
+
+        for timing in timing_range:
+            key = 't#{:d}#v#{:d}'.format(timing, 0)
+            error_count = lane_data[key]
+            if error_count == INVALID_ERROR_COUNT:
+                break
+            elif error_count > 0:
+                if direction == 'right':
+                    boundary = timing - 1 if timing > 0 else timing
+                else:
+                    boundary = timing + 1 if timing < 0 else timing
+                break
         else:
-            return (abs(x)/(T_EYE_HS_G4_RX/2) + abs(y)/V_DIF_AC_HS_G4_RX) <= 1
+            boundary = boundary_max
+
+        return boundary
+
+    def calculate_eye_width_center(self, lane_no):
+        assert((lane_no == 0) or (lane_no == 1))
+        if lane_no == 0:
+            lane_data = self.lane0_data
+        elif lane_no == 1:
+            lane_data = self.lane1_data
+        else:
+            print('wrong lane_no in calculate_eye_center')
+            return
+
+        # Find right and left eye boundaries using the helper function
+        right_eye_width_boundary = self.find_eye_width_boundary(lane_data, 'right')
+        left_eye_width_boundary = self.find_eye_width_boundary(lane_data, 'left')
+
+        # Calculate eye center if both boundaries are found
+        if right_eye_width_boundary is not None and left_eye_width_boundary is not None:
+            eye_width = right_eye_width_boundary - left_eye_width_boundary + 1
+            eye_center = left_eye_width_boundary + int(eye_width / 2)
+            if lane_no == 0:
+                self.lane0_eye_center = eye_center
+            else:
+                self.lane1_eye_center = eye_center
+
+            print(f'Lane {lane_no}: Eye width boundaries found - Left: {left_eye_width_boundary}, Right: {right_eye_width_boundary}')
+            print(f'Lane {lane_no}: Eye width: {eye_width}, Eye center: {eye_center}')
+        else:
+            print(f'Lane {lane_no}: Could not find eye width boundaries')
+            if lane_no == 0:
+                self.lane0_eye_center = None
+            else:
+                self.lane1_eye_center = None
+
+    def in_eye_mask(self, x, y, lane_no):
+        assert((lane_no == 0) or (lane_no == 1))
+        eye_center_timing_adj = None
+        eye_center_step = self.lane0_eye_center if lane_no == 0 else self.lane1_eye_center
+        if eye_center_step is not None:
+            eye_center_timing_adj = round((eye_center_step * self.timing_step), 4)
+            if self.gear == 5:
+                return (abs(x - eye_center_timing_adj)/(T_EYE_HS_G5_RX/2) + abs(y)/V_DIF_AC_HS_G5_RX) <= 1
+            else:
+                return (abs(x - eye_center_timing_adj)/(T_EYE_HS_G4_RX/2) + abs(y)/V_DIF_AC_HS_G4_RX) <= 1
 
     def plot_eye(self, lane_no):
         self.single_lane_eom_pass = True
@@ -287,8 +356,6 @@ class ufs_eye_monitor_plot(object):
             lane_timing_list_adj = self.lane0_timing_list_adj
             lane_voltage_list_adj = self.lane0_voltage_list_adj
             lane_error_count_list = self.lane0_error_count_list
-            x_len = self.lane0_x_len
-            y_len = self.lane0_y_len
             x_mid = self.lane0_x_mid
             y_mid = self.lane0_y_mid
             lane_timing_list_set = self.lane0_timing_list_set
@@ -298,8 +365,6 @@ class ufs_eye_monitor_plot(object):
             lane_timing_list_adj = self.lane1_timing_list_adj
             lane_voltage_list_adj = self.lane1_voltage_list_adj
             lane_error_count_list = self.lane1_error_count_list
-            x_len = self.lane1_x_len
-            y_len = self.lane1_y_len
             x_mid = self.lane1_x_mid
             y_mid = self.lane1_y_mid
             lane_timing_list_set = self.lane1_timing_list_set
@@ -344,12 +409,17 @@ class ufs_eye_monitor_plot(object):
         else:
             title_2 = 'Y-axis  : Voltage: Voltage Information is missing in the log'
 
+        eye_center_step = None
+        eye_center_step = self.lane0_eye_center if lane_no == 0 else self.lane1_eye_center
+
         for (x,y,e) in zip(lane_timing_list_adj, lane_voltage_list_adj, lane_error_count_list):
-            if e == INVALID_ERROR_COUNT and self.in_eye_mask(x,y):
-                self.single_lane_eom_skip_result = True
-            elif e > 0 and e < INVALID_ERROR_COUNT and self.in_eye_mask(x,y) :
-                self.single_lane_eom_pass = False
-                break
+            if eye_center_step is not None:
+                in_mask = self.in_eye_mask(x,y,lane_no)
+                if in_mask:
+                    if e > 0:
+                        self.single_lane_eom_pass = False
+                    if e == INVALID_ERROR_COUNT:
+                        self.single_lane_eom_skip_result = True
 
         title = title_1 + '\n' + title_2 + '\n' + title_3
         ax2.set_title(title, fontsize=17, fontweight='bold', loc='center')
@@ -359,21 +429,24 @@ class ufs_eye_monitor_plot(object):
         ax2.invert_yaxis()
         ax2.yaxis.label.set_color('green')
 
-        poly1_coords = [
-            (x_mid - eye_width, y_mid),
-            (x_mid, y_mid + eye_height),
-            (x_mid + eye_width, y_mid),
-            (x_mid, y_mid - eye_height),
-        ]
+        # Only draw mask if eye center was found
+        if eye_center_step is not None:
+            x_mid = x_mid + eye_center_step
+            poly1_coords = [
+                (x_mid - eye_width, y_mid),
+                (x_mid, y_mid + eye_height),
+                (x_mid + eye_width, y_mid),
+                (x_mid, y_mid - eye_height),
+            ]
 
-        poly1 = patches.Polygon(poly1_coords, closed=True, color='yellow')
-        ax2.add_patch(poly1)
+            poly1 = patches.Polygon(poly1_coords, closed=True, facecolor='none', edgecolor='yellow', linewidth=2)
+            ax2.add_patch(poly1)
 
-        if self.single_lane_eom_skip_result == False:
-            if self.single_lane_eom_pass == True:
-                plt.text(x_mid, y_mid, 'PASS', fontsize=12, ha='center', va='center', color='green')
-            else:
-                plt.text(x_mid, y_mid, 'FAIL', fontsize=12, ha='center', va='center', color='red')
+            if self.single_lane_eom_skip_result == False:
+                if self.single_lane_eom_pass == True:
+                    plt.text(x_mid, y_mid, 'PASS', fontsize=12, ha='center', va='center', color='blue')
+                else:
+                    plt.text(x_mid, y_mid, 'FAIL', fontsize=12, ha='center', va='center', color='yellow')
 
         plt.show()
 
