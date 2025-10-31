@@ -97,6 +97,8 @@ class ufs_eye_monitor_plot(object):
         self.ufs_gear = ''
         self.side = ''
 
+        self.fd.close()
+
         for line in self.file_data:
             self.line_no += 1
             line_list = line.split()
@@ -407,7 +409,7 @@ class ufs_eye_monitor_plot(object):
             self.voltage_max_steps, self.voltage_max_offset, self.voltage_step, lane_voltage_list_set[0], lane_voltage_list_set[-1],
             len(lane_voltage_list_set))
         else:
-            title_2 = 'Y-axis  : Voltage: Voltage Information is missing in the log'
+            title_3 = 'Y-axis  : Voltage: Voltage Information is missing in the log'
 
         eye_center_step = None
         eye_center_step = self.lane0_eye_center if lane_no == 0 else self.lane1_eye_center
