@@ -34,6 +34,7 @@
 #define EOM_TEMP_DATA_SIZE		4 * 1024 * 1024	//4MB file
 #define EOM_TEMP_DATA_MEM_ALIGN_SIZE	4096
 #define EOM_SUPPORTED_MIN_GEAR		4
+#define EOM_TIMING_VOLTAGE_INIT		0xFF
 
 #define STRING_BUFFER_SIZE		0x24
 
@@ -65,24 +66,29 @@ static char *tmp_buf;
 
 /* Global EOM control parameters */
 static int lane;
-static int voltage;
+static int voltage_low;
+static int voltage_high;
+static int timing_left;
+static int timing_right;
 static int target_test_count;
 static int eom_result_count;
 static int tmp_fd, bsg_fd;
-static bool single_voltage;
 static bool do_io;
 static bool verbose;
 
 const char *ufseom_help =
 	"\nufseom cli :\n\n"
-	"ufseom [-p | --peer | -l | --local] [-D | --data] [-L | --lane <lane no.>] [-v | --voltage <voltage>] [-t | --target <target test count>] [-o | --output <output>] [-d | --device <device>]\n\n"
+	"ufseom [-p | --peer | -l | --local] [-D | --data] [-L | --lane <lane no.>] [--voltage-low <low voltage value>] [--voltage-high <high voltage value>] [--timing-left <left timing value>] [--timing-right <right timing value>] [-T | --target <target test count>] [-o | --output <output>] [-d | --device <device>]\n\n"
 	"-h : help\n"
 	"--version : UFS EOM version\n"
 	"-p | --peer : peer\n"
 	"-l | --local : local\n"
 	"-D | --data : explicitly do I/O transfer with random data patterns to stress the link while EOM is running\n"
 	"-L | --lane : lane no. 0 or 1, collect EOM data for all connected lanes if not given\n"
-	"-v | --voltage : collect EOM data for this voltage only\n"
+	"--voltage-low : collect EOM data from low voltage to high voltage, if it is not given, it defaults to -voltage_max_steps\n"
+	"--voltage-high : collect EOM data from low voltage to high voltage, if it is not given, it defaults to voltage_max_steps\n"
+	"--timing-left : collect EOM data from left timing to right timing, if it is not given, it defaults to -timing_max_steps\n"
+	"--timing-right : collect EOM data from left timing to right timing, if it is not given, it defaults to timing_max_steps\n"
 	"-t | --target : target test count\n"
 	"-o | --output : path to the folder where the EOM report is saved\n"
 	"-V | --verbose : enable detailed EOM information and logs\n"
@@ -93,7 +99,11 @@ const char *ufseom_help =
 	"  2. Collect EOM data for peer Rx:\n"
 	"  ufseom -p -D -o /data/ -d /dev/ufs-bsg0\n"
 	"  3. Collect EOM data for local Rx with voltage 0 only:\n"
-	"  ufseom -l -D -v 0 -o /data/ -d /dev/ufs-bsg0\n\n"
+	"  ufseom -l -D --voltage-low 0 --voltage-high 0 -o /data/ -d /dev/ufs-bsg0\n"
+	"  4. Collect EOM data for local Rx from voltage 0 to 8:\n"
+	"  ufseom -l -D --voltage-low 0 --voltage-high 8 -o /data/ -d /dev/ufs-bsg0\n"
+	"  5. Collect EOM data for local Rx for voltage from 0 to 8 and timing from -1 to 1:\n"
+	"  ufseom -l -D --voltage-low 0 --voltage-high 8 --timing-left -1 --timing-right 1 -o /data/ -d /dev/ufs-bsg0\n\n"
 	"Note that to get accurate EOM data, user should disable UFS driver low power mode features,\n"
 	"such as Clock Scaling, Clock Gating, Suspend/Resume and Auto Hibernate. For example:\n"
 	"$ echo 0 > /sys/devices/<path to platform devices>/*.ufshc/clkscale_enable\n"
@@ -103,18 +113,21 @@ const char *ufseom_help =
 	"although UFS EOM is not supposed to disturb normal I/O traffics, it is recommanded to\n"
 	"reboot the system after use ufseom.\n";
 
-static char *ufseom_short_options = "plDL:v:t:o:d:V";
+static char *ufseom_short_options = "plDL:t:o:d:V";
 
 static struct option ufseom_long_options[] = {
 	{"peer", no_argument, NULL, 'p'}, /* UFS device */
 	{"local", no_argument, NULL, 'l'}, /* UFS host*/
 	{"data", no_argument, NULL, 'D'}, /* Do I/Os */
 	{"lane", required_argument, NULL, 'L'}, /* Lane */
-	{"voltage", required_argument, NULL, 'v'}, /* Voltage */
 	{"target", required_argument, NULL, 't'}, /* Target test count */
 	{"output", required_argument, NULL, 'o'}, /* EOM result output path */
 	{"device", required_argument, NULL, 'd'}, /* UFS BSG device path. For example: /dev/ufs-bsg0 */
 	{"verbose", no_argument, NULL, 'V'}, /* Enable detailed EOM information and logs */
+	{"voltage-low", required_argument, NULL, 1}, /* Voltage low */
+	{"voltage-high", required_argument, NULL, 2}, /* Voltage high */
+	{"timing-left", required_argument, NULL, 3}, /* Timing left*/
+	{"timing-right", required_argument, NULL, 4}, /* Timing right */
 	{NULL, 0, NULL, 0}
 };
 
@@ -162,7 +175,7 @@ static int parse_string_desc(__u8 *buf, char *string)
 	return SUCCESS;
 }
 
-static int get_voltage_value_from_cli(int *val)
+static int get_voltage_timing_value_from_cli(int *val)
 {
 	char *end;
 
@@ -462,22 +475,6 @@ static int init_lane(void)
 	return SUCCESS;
 }
 
-static int init_voltage_limit(void)
-{
-	int v, ret;
-
-	ret = get_voltage_value_from_cli(&v);
-	if (ret) {
-		pr_err("Invalid input for voltage\n");
-		return ERROR;
-	}
-
-	single_voltage = true;
-	voltage = v;
-
-	return SUCCESS;
-}
-
 static int init_target_test_count(void)
 {
 	int t, ret;
@@ -536,9 +533,6 @@ static int parse_args(int argc, char *argv[])
 		case 'L':
 			ret = init_lane();
 			break;
-		case 'v':
-			ret = init_voltage_limit();
-			break;
 		case 'o':
 			ret = init_device_path(output_path);
 			break;
@@ -548,6 +542,19 @@ static int parse_args(int argc, char *argv[])
 		case 't':
 			ret = init_target_test_count();
 			break;
+		case 1:
+			ret = get_voltage_timing_value_from_cli(&voltage_low);
+			break;
+		case 2:
+			ret = get_voltage_timing_value_from_cli(&voltage_high);
+			break;
+		case 3:
+			ret = get_voltage_timing_value_from_cli(&timing_left);
+			break;
+		case 4:
+			ret = get_voltage_timing_value_from_cli(&timing_right);
+			break;
+
 		default:
 			pr_err("I cannot understand, please try 'ufseom -h'.\n");
 			ret = ERROR;
@@ -596,14 +603,64 @@ static int parse_args(int argc, char *argv[])
 	return SUCCESS;
 }
 
+static int timing_voltage_sanity_check(struct EOMData *data)
+{
+	int ret = ERROR;
+
+	if (voltage_low == EOM_TIMING_VOLTAGE_INIT)
+		voltage_low = -data->voltage_max_steps;
+
+	if (voltage_high == EOM_TIMING_VOLTAGE_INIT)
+		voltage_high = data->voltage_max_steps;
+
+	if (timing_left == EOM_TIMING_VOLTAGE_INIT)
+		timing_left = -data->timing_max_steps;
+
+	if (timing_right == EOM_TIMING_VOLTAGE_INIT)
+		timing_right = data->timing_max_steps;
+
+	/* Sanity check for voltage range*/
+	if (voltage_low > data->voltage_max_steps || voltage_low < -data->voltage_max_steps ||
+				voltage_high > data->voltage_max_steps || voltage_high < -data->voltage_max_steps) {
+		pr_err("Invalid voltage range: hardware limits: [-%d, %d]\n", data->voltage_max_steps, data->voltage_max_steps);
+		ret = ERROR;
+		goto out;
+	}
+
+	/* Sanity check for timing range*/
+	if (timing_left > data->timing_max_steps || timing_left < -data->timing_max_steps ||
+				timing_right > data->timing_max_steps || timing_right < -data->timing_max_steps) {
+		pr_err("Invalid timing range: hardware limits: [-%d, %d]\n", data->timing_max_steps, data->timing_max_steps);
+		ret = ERROR;
+		goto out;
+	}
+
+	if (voltage_low > voltage_high) {
+		pr_err("Voltage high is less than voltage low\n");
+		ret = ERROR;
+		goto out;
+	}
+
+	if (timing_left > timing_right) {
+		pr_err("Timing right is less than timing left\n");
+		ret = ERROR;
+		goto out;
+	}
+
+	ret = SUCCESS;
+out:
+	return ret;
+}
+
 static void init_eom_operation(void)
 {
 	lane = INIT;
-	voltage = INIT;
 	target_test_count = INIT;
 	tmp_fd = INIT;
-
-	single_voltage = false;
+	voltage_low = EOM_TIMING_VOLTAGE_INIT;
+	voltage_high = EOM_TIMING_VOLTAGE_INIT;
+	timing_left = EOM_TIMING_VOLTAGE_INIT;
+	timing_right = EOM_TIMING_VOLTAGE_INIT;
 
 	output_path[0] = '\0';
 	device_path[0] = '\0';
@@ -747,14 +804,19 @@ skip_io_prepare:
 		printf("VoltageMaxSteps %d VoltageMaxOffset %d\n", data->voltage_max_steps, data->voltage_max_offset);
 	}
 
-	/* Sanity check for single voltage */
-	if (single_voltage && (voltage > data->voltage_max_steps || voltage < -data->voltage_max_steps)) {
-		pr_err("Invalid voltage\n");
+	/* Sanity check for voltage and timing range*/
+	ret = timing_voltage_sanity_check(data);
+	if (ret) {
+		pr_err("Timing or voltage is invalid\n");
 		ret = ERROR;
 		goto out;
 	}
 
-	eom_result_count = (data->timing_max_steps * 2 + 1) * (data->voltage_max_steps * 2 + 1) * data->num_lanes;
+	if (verbose)
+		printf("timing_left:%d, timing_right:%d, voltage_low:%d, voltage_high:%d\n",
+					timing_left, timing_right, voltage_low, voltage_high);
+
+	eom_result_count = (timing_right - timing_left + 1) * (voltage_high - voltage_low + 1) * data->num_lanes;
 	eom_result_size = eom_result_count * sizeof(struct eom_result);
 	data->er = malloc(eom_result_size);
 	if (!data->er) {
@@ -771,21 +833,9 @@ skip_io_prepare:
 	clock_gettime(CLOCK_MONOTONIC, &ts_start);
 	/* Main loop starts here */
 	for (l = lane, n = data->num_lanes; n > 0; n--, l++) {
-		/* Sweep all timings */
-		for (t = -data->timing_max_steps; t <= data->timing_max_steps; t++) {
-			/* Measure only the given voltage */
-			if (single_voltage) {
-				ret = eom_scan(data->local_peer, l, t, voltage, target_test_count);
-				if (ret) {
-					pr_err("Fail to run EOM scan\n");
-					goto out;
-				}
-				continue;
-			}
-
-			/* Sweep all voltages */
-			for (v = -data->voltage_max_steps; v <= data->voltage_max_steps; v++) {
-				ret = eom_scan(data->local_peer, l, t , v, target_test_count);
+		for (t = timing_left; t <= timing_right; t++) {
+			for (v = voltage_low; v <= voltage_high; v++) {
+				ret = eom_scan(data->local_peer, l, t, v, target_test_count);
 				if (ret) {
 					pr_err("Fail to run EOM scan\n");
 					goto out;
@@ -800,6 +850,7 @@ skip_io_prepare:
 			goto out;
 		}
 	}
+
 	clock_gettime(CLOCK_MONOTONIC, &ts_end);
 	printf("EOM Scan Finished!\n Time elapsed: %ld seconds\n", ts_end.tv_sec - ts_start.tv_sec);
 
