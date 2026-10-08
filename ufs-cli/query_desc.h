@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause-Clear
+/*
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
 #ifndef QUERY_DESC_H
 #define QUERY_DESC_H
 
