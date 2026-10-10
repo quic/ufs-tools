@@ -5,6 +5,7 @@ import sys
 import pdb
 import csv
 import re
+import json
 import pandas as pd
 import seaborn as sns
 import numpy as np
@@ -99,71 +100,8 @@ class ufs_eye_monitor_plot(object):
 
         self.fd.close()
 
-        for line in self.file_data:
-            self.line_no += 1
-            line_list = line.split()
-            if 'TimingMaxSteps' in line and 'TimingMaxOffset' in line:
-                assert(line_list[0] == 'TimingMaxSteps')
-                assert(line_list[2] == 'TimingMaxOffset')
-                self.timing_max_steps = int(self.string_to_number(line_list[1]))
-                self.timing_max_offset = int(self.string_to_number(line_list[3]))
-                self.timing_step = (self.timing_max_offset * 0.01) / self.timing_max_steps
-            if 'VoltageMaxSteps' in line and 'VoltageMaxOffset' in line:
-                assert(line_list[0] == 'VoltageMaxSteps')
-                assert(line_list[2] == 'VoltageMaxOffset')
-                self.voltage_max_steps = int(self.string_to_number(line_list[1]))
-                self.voltage_max_offset = int(self.string_to_number(line_list[3]))
-                self.voltage_step = (self.voltage_max_offset * 10) / self.voltage_max_steps
-            if 'UFS Spec Version:' in line:
-                if line_list[4] == 'UFS' and line_list[5] == 'Spec' and line_list[6] == 'Version:':
-                    self.ufs_version_no = 'UFS' + line_list[7]
-            if 'UFS INQUIRY ID:' in line:
-                if line_list[4] == 'UFS' and line_list[5] == 'INQUIRY' and line_list[6] == 'ID:':
-                    self.ufs_device_mfr_name = line_list[7]
-                    self.ufs_device_mfr_id = line_list[8]
-            if 'UFS Total Size:' in line:
-                if line_list[4] == 'UFS' and line_list[5] == 'Total' and line_list[6] == 'Size:':
-                    self.ufs_device_size = line_list[7] + line_list[8]
-            if 'UFS Gear Speed:' in line:
-                if line_list[4] == 'UFS' and line_list[5] == 'Gear' and line_list[6] == 'Speed:':
-                    self.ufs_gear = '{:s} {:s}'.format(line_list[7], line_list[8])
-            if 'Side Eye Monitor Start' in line:
-                if line_list[0] == 'UFS' and line_list[2] == 'Side' and line_list[3] == 'Eye' and line_list[4] == 'Monitor' and line_list[5] == 'Start':
-                    self.side = line_list[1]
-            for item in self.match_line_list:
-                if item not in line:
-                    continue
-            if len(line_list) <= 7:
-                continue
-            if line_list[0] != 'lane' and line_list[2] != 'timing' and line_list[4] != 'voltage' and line_list[6] != 'error' and line_list[7] != 'count':
-                continue
-
-            try:
-                lane_no = int(line_list[1])
-                if lane_no not in self.lane_list:
-                    self.lane_list.append(lane_no)
-                timing = self.string_to_number(line_list[3])
-                voltage = self.string_to_number(line_list[5])
-                error_count = self.string_to_number(line_list[8])
-                self.gear = int(re.search(r'(?<=HS-G)\d+', self.ufs_gear).group())
-            except:
-                self.bad_data_count += 1
-                print('Error on Line number {:d}: BAD Data.. plese check this below line in the log'.format(self.line_no))
-                print(line)
-                continue
-
-            if self.gear < 4:
-                 print('Unsupported gear {:d}\n'.format(self.gear))
-                 return False
-
-            if lane_no == 0:
-                key = 't#{:d}#v#{:d}'.format(timing, voltage)
-                self.lane0_data[key] = error_count
-            elif lane_no == 1:
-                key = 't#{:d}#v#{:d}'.format(timing, voltage)
-                self.lane1_data[key] = error_count
-            else:
-                self.quit_with_err_msg('wrong lane number on line {:d}'.format(self.line_no))
+        if not self.parse_json_format():
+            self.parse_text_format()
 
         if self.bad_data_count != 0:
             return
@@ -243,6 +181,138 @@ class ufs_eye_monitor_plot(object):
             self.eom_pass.append(self.plot_eye(lane))
 
         return all(self.eom_pass)
+
+    def parse_text_format(self):
+        for line in self.file_data:
+            self.line_no += 1
+            line_list = line.split()
+            if 'TimingMaxSteps' in line and 'TimingMaxOffset' in line:
+                assert(line_list[0] == 'TimingMaxSteps')
+                assert(line_list[2] == 'TimingMaxOffset')
+                self.timing_max_steps = int(self.string_to_number(line_list[1]))
+                self.timing_max_offset = int(self.string_to_number(line_list[3]))
+                self.timing_step = (self.timing_max_offset * 0.01) / self.timing_max_steps
+            if 'VoltageMaxSteps' in line and 'VoltageMaxOffset' in line:
+                assert(line_list[0] == 'VoltageMaxSteps')
+                assert(line_list[2] == 'VoltageMaxOffset')
+                self.voltage_max_steps = int(self.string_to_number(line_list[1]))
+                self.voltage_max_offset = int(self.string_to_number(line_list[3]))
+                self.voltage_step = (self.voltage_max_offset * 10) / self.voltage_max_steps
+            if 'UFS Spec Version:' in line:
+                if line_list[4] == 'UFS' and line_list[5] == 'Spec' and line_list[6] == 'Version:':
+                    self.ufs_version_no = 'UFS' + line_list[7]
+            if 'UFS INQUIRY ID:' in line:
+                if line_list[4] == 'UFS' and line_list[5] == 'INQUIRY' and line_list[6] == 'ID:':
+                    self.ufs_device_mfr_name = line_list[7]
+                    self.ufs_device_mfr_id = line_list[8]
+            if 'UFS Total Size:' in line:
+                if line_list[4] == 'UFS' and line_list[5] == 'Total' and line_list[6] == 'Size:':
+                    self.ufs_device_size = line_list[7] + line_list[8]
+            if 'UFS Gear Speed:' in line:
+                if line_list[4] == 'UFS' and line_list[5] == 'Gear' and line_list[6] == 'Speed:':
+                    self.ufs_gear = '{:s} {:s}'.format(line_list[7], line_list[8])
+            if 'Side Eye Monitor Start' in line:
+                if line_list[0] == 'UFS' and line_list[2] == 'Side' and line_list[3] == 'Eye' and line_list[4] == 'Monitor' and line_list[5] == 'Start':
+                    self.side = line_list[1]
+            for item in self.match_line_list:
+                if item not in line:
+                    continue
+            if len(line_list) <= 7:
+                continue
+            if line_list[0] != 'lane' and line_list[2] != 'timing' and line_list[4] != 'voltage' and line_list[6] != 'error' and line_list[7] != 'count':
+                continue
+
+            try:
+                lane_no = int(line_list[1])
+                if lane_no not in self.lane_list:
+                    self.lane_list.append(lane_no)
+                timing = self.string_to_number(line_list[3])
+                voltage = self.string_to_number(line_list[5])
+                error_count = self.string_to_number(line_list[8])
+                self.gear = int(re.search(r'(?<=HS-G)\d+', self.ufs_gear).group())
+            except:
+                self.bad_data_count += 1
+                print('Error on Line number {:d}: BAD Data.. plese check this below line in the log'.format(self.line_no))
+                print(line)
+                continue
+
+            if self.gear < 4:
+                 print('Unsupported gear {:d}\n'.format(self.gear))
+                 return False
+
+            self.add_lane_data(lane_no, timing, voltage, error_count)
+
+    def parse_json_format(self):
+        cleaned_lines = []
+
+        for line in self.file_data:
+            if '[EOMREPORTLIB]' in line:
+                cleaned_lines.append(line.split('[EOMREPORTLIB]', 1)[1])
+            else:
+                cleaned_lines.append(line)
+
+        content = ''.join(cleaned_lines)
+        start = content.find('{')
+        end = content.rfind('}')
+        if start < 0 or end < 0 or end <= start:
+            return False
+
+        try:
+            data = json.loads(content[start:end + 1])
+        except json.JSONDecodeError:
+            return False
+
+        if 'results' not in data or not data['results']:
+            self.quit_with_err_msg('Invalid JSON report: missing results')
+
+        result = data['results'][0]
+        self.side = "Host" if result.get('interface') == "Host UFS" else "Device"
+        self.ufs_gear = result.get('gear', 'HS-G4 Rate-B')
+        self.gear = int(re.search(r'(?<=HS-G)\d+', self.ufs_gear).group())
+        if self.gear < 4:
+            print('Unsupported gear {:d}\n'.format(self.gear))
+            return False
+
+        note = result.get('note', '').strip()
+        if note:
+            parts = note.split()
+            self.ufs_device_mfr_name = parts[0]
+            self.ufs_device_mfr_id = parts[1] if len(parts) > 1 else ''
+
+        self.timing_step = float(result.get('time_scale', 0))
+        self.voltage_step = float(result.get('voltage_scale', 0))
+
+        max_timing = 0
+        max_voltage = 0
+        for lane_obj in result.get('lanes', []):
+            lane_no = int(lane_obj.get('lane_number'))
+            if lane_no not in self.lane_list:
+                self.lane_list.append(lane_no)
+            for eye_data in lane_obj.get('eye', []):
+                if len(eye_data) != 3:
+                    self.bad_data_count += 1
+                    continue
+                timing, voltage, error_count = int(eye_data[0]), int(eye_data[1]), int(eye_data[2])
+                max_timing = max(max_timing, abs(timing))
+                max_voltage = max(max_voltage, abs(voltage))
+                self.add_lane_data(lane_no, timing, voltage, error_count)
+
+        self.timing_max_steps = max_timing
+        self.voltage_max_steps = max_voltage
+        self.timing_max_offset = int(round((self.timing_step * self.timing_max_steps) / 0.01)) if self.timing_step else 0
+        self.voltage_max_offset = int(round((self.voltage_step * self.voltage_max_steps) / 10)) if self.voltage_step else 0
+
+        return True
+
+    def add_lane_data(self, lane_no, timing, voltage, error_count):
+        if lane_no == 0:
+            key = 't#{:d}#v#{:d}'.format(timing, voltage)
+            self.lane0_data[key] = error_count
+        elif lane_no == 1:
+            key = 't#{:d}#v#{:d}'.format(timing, voltage)
+            self.lane1_data[key] = error_count
+        else:
+            self.quit_with_err_msg('wrong lane number: {:d}'.format(lane_no))
 
     def validate_data(self, lane_no):
         missing_data_count = 0

@@ -6,11 +6,14 @@ import sys
 import re
 import subprocess
 import datetime
+import json
 
 EomVersion = 1.0
 Reporter = None
 TimingMaxSteps = 0
+TimingMaxOffset = 0
 VoltageMaxSteps = 0
+VoltageMaxOffset = 0
 
 class LsufsCli(object):
     def __init__(self):
@@ -64,20 +67,25 @@ class EomMisc(object):
         product_desc = self.eom_misc_lsufs.query_desc(5, i_product_revision_index)
         product_revision = self.parse_desc(product_desc, 4)
 
-        print(f'- - - - UFS INQUIRY ID: {manufacturer_name} {product_name} {product_revision}', file=Reporter)
+        if Reporter:
+            print(f'- - - - UFS INQUIRY ID: {manufacturer_name} {product_name} {product_revision}', file=Reporter)
         print(f'- - - - UFS INQUIRY ID: {manufacturer_name} {product_name} {product_revision}')
+        return manufacturer_name, product_name, product_revision
 
     def get_eom_caps(self, lane):
-        global Reporter, TimingMaxSteps, VoltageMaxSteps
+        global Reporter, TimingMaxSteps, TimingMaxOffset, VoltageMaxSteps, VoltageMaxOffset
         # Read capabilities
         TimingMaxSteps = self.eom_misc_lsufs.uic_get(lane, 0xf2, "RX")
         TimingMaxOffset = self.eom_misc_lsufs.uic_get(lane, 0xf3, "RX")
         VoltageMaxSteps = self.eom_misc_lsufs.uic_get(lane, 0xf4, "RX")
         VoltageMaxOffset = self.eom_misc_lsufs.uic_get(lane, 0xf5, "RX")
 
-        print("EOM Capabilities:", file=Reporter)
-        print(f"TimingMaxSteps {TimingMaxSteps}, TimingMaxOffset {TimingMaxOffset}", file=Reporter)
-        print(f"VoltageMaxSteps {VoltageMaxSteps}, VoltageMaxOffset {VoltageMaxOffset}", file=Reporter)
+        if Reporter:
+            print("EOM Capabilities:", file=Reporter)
+            print(f"TimingMaxSteps {TimingMaxSteps}, TimingMaxOffset {TimingMaxOffset}", file=Reporter)
+            print(f"VoltageMaxSteps {VoltageMaxSteps}, VoltageMaxOffset {VoltageMaxOffset}", file=Reporter)
+
+        return TimingMaxSteps, TimingMaxOffset, VoltageMaxSteps, VoltageMaxOffset
 
     def determine_lanes(self, lane):
         lane_num_max = 2
@@ -119,6 +127,10 @@ class UFSEOM(object):
         self.single_voltage = False
         self.target_test_count = None
         self.EomReport = None
+        self.output_format = "text"
+        self.device_info = None
+        self.caps = None
+        self.scan_results = {}
         self.lsufs = LsufsCli()
         self.misc = EomMisc(self.lsufs)
 
@@ -133,7 +145,7 @@ class UFSEOM(object):
         print('Command line input:', argv)
 
         try:
-            options, args = getopt.getopt(argv, '', ['side=', 'lane=', 'voltage=', 'target=', 'lsufs_path=', 'device_path='])
+            options, args = getopt.getopt(argv, '', ['side=', 'lane=', 'voltage=', 'target=', 'format=', 'lsufs_path=', 'device_path='])
         except getopt.GetoptError:
             print_usage()
             sys.exit(2)
@@ -147,6 +159,8 @@ class UFSEOM(object):
                 voltage = int(arg)
             elif opt == "--target":
                 self.target_test_count = int(arg)
+            elif opt == "--format":
+                self.output_format = arg
             elif opt == "--lsufs_path":
                 lsufs_path = arg
             elif opt == "--device_path":
@@ -187,24 +201,31 @@ class UFSEOM(object):
             print("Invalid input for --target, expecting 1 to 127")
             sys.exit(2)
 
+        if self.output_format not in ("text", "json"):
+            print("Invalid input for --format, expecting 'text' or 'json'")
+            sys.exit(2)
+
         self.lanes, self.start_lane, lane_string = self.misc.determine_lanes(lane)
 
-        self.EomReport = f"{self.side}_lane_{lane_string}_ttc_{self.target_test_count}.eom"
-        Reporter = open(self.EomReport, 'w+')
+        report_ext = "json" if self.output_format == "json" else "eom"
+        self.EomReport = f"{self.side}_lane_{lane_string}_ttc_{self.target_test_count}.{report_ext}"
+        Reporter = open(self.EomReport, 'w+') if self.output_format == "text" else None
 
-        self.misc.get_device_info()
-        self.misc.get_eom_caps(self.start_lane)
+        self.device_info = self.misc.get_device_info()
+        self.caps = self.misc.get_eom_caps(self.start_lane)
 
         self.voltage_max, self.single_voltage = self.misc.determine_voltage(voltage)
 
     def eom_start(self):
-        global Reporter, TimingMaxSteps, VoltageMaxSteps
+        global Reporter, TimingMaxSteps, TimingMaxOffset, VoltageMaxSteps, VoltageMaxOffset
         start_time = datetime.datetime.now()
 
         side = "Host" if self.side == "local" else "Device"
         print("Start EOM Scan...")
-        print(f"UFS {side} Side Eye Monitor Start", file = Reporter)
+        if Reporter:
+            print(f"UFS {side} Side Eye Monitor Start", file=Reporter)
         for lane in range(self.start_lane, self.lanes):
+            self.scan_results.setdefault(lane, [])
             # Enable Eye Monitor Test control register.
             self.lsufs.uic_set(lane, 0xf6, 0x1, "RX")
 
@@ -221,8 +242,11 @@ class UFSEOM(object):
         end_time = datetime.datetime.now()
         spent_time = end_time - start_time
         print(f"EOM Scan Finished!\nTime elapsed: {spent_time}")
-        print(f"EOM Scan Finished!\nTime elapsed: {spent_time}", file = Reporter)
-        Reporter.close()
+        if Reporter:
+            print(f"EOM Scan Finished!\nTime elapsed: {spent_time}", file=Reporter)
+            Reporter.close()
+        else:
+            self.write_json_report(side)
         print(f"EOM results saved to {self.EomReport}")
 
     def eom_scan(self, lane, timing, voltage, target_test_count):
@@ -249,7 +273,9 @@ class UFSEOM(object):
                 err_count = self.lsufs.uic_get(lane, 0xfb, "RX")
                 if test_count is not None and err_count is not None:
                     if test_count >= target_test_count or err_count >= err_cnt_threshold:
-                        print('lane:', lane, 'timing:', timing, 'voltage:', voltage, 'error count:', err_count, file=Reporter)
+                        if Reporter:
+                            print('lane:', lane, 'timing:', timing, 'voltage:', voltage, 'error count:', err_count, file=Reporter)
+                        self.scan_results.setdefault(lane, []).append([timing, voltage, err_count])
                         break
                 else:
                     print("Failed to get vaild RX_EYEMON_Tested_Count or RX_EYEMON_Error_Count")
@@ -277,10 +303,45 @@ class UFSEOM(object):
         config = (direction << direction_bit) | (abs(value) & step_mask)
         return config
 
+    def write_json_report(self, side):
+        global TimingMaxSteps, TimingMaxOffset, VoltageMaxSteps, VoltageMaxOffset
+        manufacturer_name, product_name, product_revision = self.device_info
+        time_scale = (TimingMaxOffset * 0.01) / TimingMaxSteps
+        voltage_scale = (VoltageMaxOffset * 10) / VoltageMaxSteps
+        note = f"{manufacturer_name} {product_name} {product_revision}".strip()
+
+        lanes_data = []
+        for lane in sorted(self.scan_results):
+            lanes_data.append({
+                "lane_number": lane,
+                "note": "",
+                "eye": self.scan_results[lane],
+            })
+
+        data = {
+            "version": "1.0.0",
+            "results": [
+                {
+                    "interface": f"{side} UFS",
+                    "instance": 0,
+                    "time_scale": round(time_scale, 5),
+                    "time_units": "UI",
+                    "voltage_scale": round(voltage_scale, 2),
+                    "voltage_units": "mV",
+                    "note": note,
+                    "lanes": lanes_data,
+                }
+            ]
+        }
+
+        with open(self.EomReport, 'w', encoding='utf-8') as fd:
+            json.dump(data, fd, indent=2)
+            fd.write("\n")
+
 
 def print_usage():
     print()
-    print('{:s} --side=local/peer [--lane=0/1] [--voltage=<voltage value>] [--target=<target test count>] --lsufs_path=<path to lsufs> --device_path=<path to the UFS BSG device node>'.format(sys.argv[0]))
+    print('{:s} --side=local/peer [--lane=0/1] [--voltage=<voltage value>] [--target=<target test count>] [--format=text/json] --lsufs_path=<path to lsufs> --device_path=<path to the UFS BSG device node>'.format(sys.argv[0]))
     print()
     print("--version: UFS EOM version")
     print("--help: show this help menu")
@@ -288,6 +349,7 @@ def print_usage():
     print("--lane: lane no. 0 or 1, collect EOM data for all connected lanes if not given")
     print("--voltage: collect EOM data for this voltage only")
     print("--target: target test count")
+    print("--format: output format, text (default) or json")
     print("--lsufs_path: path to the lsufs executable CLI program on target device")
     print("--device_path: path to the UFS BSG device node, e.g., /dev/ufs-bsg0")
     print()

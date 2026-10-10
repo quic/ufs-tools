@@ -19,7 +19,7 @@ The scripts are intended to be used on the host (PC) side.
 
 `ufs-eom.py` exercises the UFS Eye Opening Monitor (EOM) and collects EOM logs. This script alone cannot activate UFS EOM; it requires the `lsufs` CLI program (located in `ufs-cli`) to send necessary UFS UIC commands and QUERY requests to complete the task.
 
-`ufs-eom.py` eventually generates a report, such as `local/peer_lane_0/_1.eom`, which can be fed into `ufs-eom-plot.py` to generate UFS Eye diagrams.
+`ufs-eom.py` eventually generates a report, such as `local/peer_lane_0/_1.eom`, which can be fed into `ufs-eom-plot.py` to generate UFS Eye diagrams. It can also generate JSON reports with `--format=json`.
 
 `ufs-eom.py` uses ADB to interact with the `lsufs` program. If ADB is not available, you can use the standalone `ufseom` CLI program (in `ufs-cli`) instead. Note that `ufs-eom.py` does not conduct I/O transactions by itself; the user can stress the UFS links while `ufs-eom.py` is running.
 
@@ -41,7 +41,7 @@ $ python ufs-eom.py
 
 ### ufs-eom-plot.py
 
-`ufs-eom-plot.py` takes UFS EOM report files (with the `.eom` suffix) as input and plots UFS Eye diagrams.
+`ufs-eom-plot.py` takes UFS EOM report files as input and plots UFS Eye diagrams. It supports both legacy text reports (`.eom`) and JSON reports (`.json`).
 
 For detailed usage of `ufs-eom-plot.py`, try:
 
@@ -95,6 +95,21 @@ For detailed usage of `ufseom`, refer to its help menu:
 ```bash
 $ ./ufseom -h
 ```
+
+`ufseom` supports `text` (default) and `json` report formats:
+
+```bash
+# Save JSON report to a file path
+$ ./ufseom -l -f json -o /data/local_lane_0_gear_4_ttc_93.json -d /dev/ufs-bsg0
+
+# Save JSON report to a folder (auto-generated filename)
+$ ./ufseom -l -f json -o /data/ -d /dev/ufs-bsg0
+
+# Print JSON report to stdout
+$ ./ufseom -l -f json -o - -d /dev/ufs-bsg0
+```
+
+JSON report schema: `ufs-cli/eom-report.schema.json`
 
 ## License
 
